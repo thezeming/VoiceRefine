@@ -17,12 +17,15 @@ final class DictationPipeline {
     static let maxDuration: TimeInterval = 120.0
 
     private let recorder = AudioRecorder()
+    private let whisperKitProvider = WhisperKitProvider()
     private var hotkeyManager: HotkeyManager?
     private var maxDurationCutoff: DispatchWorkItem?
+    private var currentTranscriptionTask: Task<Void, Never>?
 
     private(set) var state: DictationState = .idle
 
     var onStateChange: ((DictationState) -> Void)?
+    var onTranscript: ((String) -> Void)?
 
     // MARK: - Lifecycle
 
@@ -36,6 +39,8 @@ final class DictationPipeline {
     func stop() {
         hotkeyManager?.unregister()
         hotkeyManager = nil
+        currentTranscriptionTask?.cancel()
+        currentTranscriptionTask = nil
         _ = recorder.stop()
         transition(to: .idle)
     }
@@ -56,17 +61,19 @@ final class DictationPipeline {
     // MARK: - Recording flow
 
     private func beginRecording() {
-        guard state == .idle else { return }
+        // Per PLAN: a new hotkey press cancels any in-flight async work.
+        currentTranscriptionTask?.cancel()
+        currentTranscriptionTask = nil
+
+        if state == .recording { return }
+
         do {
             try recorder.start()
             transition(to: .recording)
             scheduleMaxDurationCutoff()
         } catch {
             NSLog("VoiceRefine: start recording failed: \(error)")
-            transition(to: .error("Could not start recording."))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                self?.transition(to: .idle)
-            }
+            flashError("Could not start recording.")
         }
     }
 
@@ -75,8 +82,7 @@ final class DictationPipeline {
         cancelMaxDurationCutoff()
 
         let duration = recorder.duration
-        let bytes = recorder.byteCount
-        _ = recorder.stop()
+        let audio = recorder.stop()
 
         if duration < Self.minDuration {
             NSLog("VoiceRefine: discarded \(String(format: "%.3fs", duration)) recording (below \(Self.minDuration)s floor)")
@@ -85,19 +91,50 @@ final class DictationPipeline {
         }
 
         do {
-            let url = Self.lastWavURL
-            try recorder.writeWAV(to: url)
-            NSLog("VoiceRefine: recording saved — \(bytes) bytes, \(String(format: "%.2fs", duration)), wrote \(url.path)")
+            try recorder.writeWAV(to: Self.lastWavURL)
+            NSLog("VoiceRefine: recording saved — \(audio.count) bytes, \(String(format: "%.2fs", duration)), wrote \(Self.lastWavURL.path)")
         } catch {
             NSLog("VoiceRefine: failed to write WAV: \(error)")
-            transition(to: .error("Could not save recording."))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                self?.transition(to: .idle)
-            }
-            return
+            // Non-fatal — continue to transcription.
         }
 
-        transition(to: .idle)
+        transition(to: .processing)
+
+        let model = UserDefaults.standard.string(forKey: TranscriptionProviderID.whisperKit.modelPreferenceKey)
+            ?? TranscriptionProviderID.whisperKit.defaultModel
+
+        currentTranscriptionTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let started = Date()
+                let text = try await self.whisperKitProvider.transcribe(audio: audio, model: model)
+                let elapsed = Date().timeIntervalSince(started)
+
+                if Task.isCancelled { return }
+
+                NSLog("VoiceRefine: transcript (\(String(format: "%.2fs", elapsed)) on \(model)) — \(text)")
+                await MainActor.run {
+                    self.onTranscript?(text)
+                    if self.state == .processing {
+                        self.transition(to: .idle)
+                    }
+                }
+            } catch {
+                if Task.isCancelled { return }
+                NSLog("VoiceRefine: transcription error — \(error)")
+                await MainActor.run { self.flashError("Transcription failed.") }
+            }
+        }
+    }
+
+    private func flashError(_ message: String) {
+        transition(to: .error(message))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self else { return }
+            if case .error = self.state {
+                self.transition(to: .idle)
+            }
+        }
     }
 
     private func scheduleMaxDurationCutoff() {
