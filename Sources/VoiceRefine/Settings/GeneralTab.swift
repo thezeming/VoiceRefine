@@ -20,7 +20,21 @@ struct GeneralTab: View {
 
             Section("Behaviour") {
                 Toggle("Start at login", isOn: $startAtLogin)
-                    .disabled(true) // wired in Phase 8
+                    .onChange(of: startAtLogin) { _, newValue in
+                        do {
+                            try LoginItem.setEnabled(newValue)
+                        } catch {
+                            NSLog("VoiceRefine: LoginItem.setEnabled(\(newValue)) failed: \(error)")
+                            NotificationDispatcher.postError(
+                                title: "Could not update login item",
+                                message: error.localizedDescription
+                            )
+                            // Roll the UI back to reality.
+                            DispatchQueue.main.async {
+                                startAtLogin = LoginItem.isEnabled
+                            }
+                        }
+                    }
                 Toggle("Play sound on record start/stop", isOn: $playStartStopSound)
             }
 
@@ -55,5 +69,13 @@ struct GeneralTab: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear {
+            // Reconcile with ServiceManagement in case the user changed
+            // the login item directly in System Settings.
+            let actual = LoginItem.isEnabled
+            if startAtLogin != actual {
+                startAtLogin = actual
+            }
+        }
     }
 }

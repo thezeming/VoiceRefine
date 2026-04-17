@@ -40,6 +40,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NotificationDispatcher.requestAuthorization()
 
+        // Keep the start-at-login pref honest: if the user disabled the
+        // login item via System Settings, the @AppStorage-backed toggle
+        // would otherwise show a stale true.
+        let loginActual = LoginItem.isEnabled
+        if UserDefaults.standard.bool(forKey: PrefKey.startAtLogin) != loginActual {
+            UserDefaults.standard.set(loginActual, forKey: PrefKey.startAtLogin)
+        }
+
         if !UserDefaults.standard.bool(forKey: PrefKey.didCompleteOnboarding) {
             showOnboarding(force: false)
         } else if !AccessibilityPermission.isTrusted {
