@@ -11,6 +11,7 @@ enum RefinementProviderFactory {
         case .openAICompatible: return OpenAICompatibleProvider()
         case .anthropic:        return AnthropicProvider()
         case .openAI:           return OpenAIProvider()
+        case .deepseek:         return DeepSeekProvider()
         }
     }
 }

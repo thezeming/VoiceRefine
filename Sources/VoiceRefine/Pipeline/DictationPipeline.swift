@@ -27,6 +27,7 @@ final class DictationPipeline {
     private let openAICompatibleProvider    = OpenAICompatibleProvider()
     private let anthropicProvider           = AnthropicProvider()
     private let openAIProvider              = OpenAIProvider()
+    private let deepSeekProvider            = DeepSeekProvider()
 
     private let contextGatherer   = ContextGatherer.shared
     private var pendingContext: RefinementContext = .empty
@@ -210,6 +211,7 @@ final class DictationPipeline {
         case .openAICompatible: provider = openAICompatibleProvider
         case .anthropic:        provider = anthropicProvider
         case .openAI:           provider = openAIProvider
+        case .deepseek:         provider = deepSeekProvider
         }
         return (id, provider)
     }

@@ -6,6 +6,7 @@ enum RefinementProviderID: String, CaseIterable, Identifiable, Hashable {
     case openAICompatible
     case anthropic
     case openAI
+    case deepseek
 
     var id: String { rawValue }
 
@@ -16,6 +17,7 @@ enum RefinementProviderID: String, CaseIterable, Identifiable, Hashable {
         case .openAICompatible:  "OpenAI-compatible (custom URL)"
         case .anthropic:         "Anthropic (cloud)"
         case .openAI:            "OpenAI (cloud)"
+        case .deepseek:          "DeepSeek (cloud)"
         }
     }
 
@@ -28,7 +30,7 @@ enum RefinementProviderID: String, CaseIterable, Identifiable, Hashable {
 
     var requiresAPIKey: Bool {
         switch self {
-        case .anthropic, .openAI, .openAICompatible: true
+        case .anthropic, .openAI, .openAICompatible, .deepseek: true
         default: false
         }
     }
@@ -53,6 +55,8 @@ enum RefinementProviderID: String, CaseIterable, Identifiable, Hashable {
             return ["claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-4-7"]
         case .openAI:
             return ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"]
+        case .deepseek:
+            return ["deepseek-chat", "deepseek-reasoner"]
         }
     }
 
