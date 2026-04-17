@@ -88,10 +88,11 @@ final class OllamaDetector {
     /// Pulls a model. The handler reports coarse progress (percent 0…1 and
     /// a human-readable status line). Streaming NDJSON is consumed
     /// incrementally so the caller can update a progress bar as bytes
-    /// arrive. Throws if the connection fails or a chunk reports an error.
+    /// arrive. The `progress` closure is always invoked on the main
+    /// actor so SwiftUI `@State` mutations inside it are sound.
     func pullModel(
         name: String,
-        progress: @escaping @Sendable (Double, String) -> Void
+        progress: @escaping @MainActor (Double, String) -> Void
     ) async throws {
         guard let url = baseURL()?.appendingPathComponent("api/pull") else {
             throw OllamaProvider.ProviderError.invalidBaseURL(currentBaseURLString())

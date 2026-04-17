@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current status
 
-**Phase 0 complete.** Build system is SPM + Makefile (not Xcode project — see Decisions log). Scaffold runs as a menu-bar-only app with placeholder mic icon, empty Settings window, and Quit. Apple Silicon verified (`arm64`). Phase 1 (Keychain + settings skeleton) is next.
+**All eight phases complete.** Full pipeline works end to end: push-to-talk → on-device Whisper → Ollama refinement with context + glossary → paste. Cloud providers (Anthropic / OpenAI / OpenAI-compatible / Groq / OpenAI-Whisper) wired as alternatives. First-run onboarding covers microphone, Accessibility, Whisper download, and Ollama status. Error notifications via UNUserNotificationCenter. Any future work is deep polish / features beyond PLAN.
 
 ## Workflow — read this before writing code
 

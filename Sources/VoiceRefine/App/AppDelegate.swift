@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var dictationPipeline: DictationPipeline?
     private var pasteEngine: PasteEngine?
     private var accessibilityWindow: AccessibilityPermissionWindowController?
+    private var onboardingWindow: OnboardingWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -17,6 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menuBar = MenuBarController(
             onShowSettings: { [weak settingsController] in
                 settingsController?.present()
+            },
+            onShowOnboarding: { [weak self] in
+                self?.showOnboarding(force: true)
             }
         )
         self.menuBarController = menuBar
@@ -34,7 +38,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pipeline.start()
         self.dictationPipeline = pipeline
 
-        if !AccessibilityPermission.isTrusted {
+        NotificationDispatcher.requestAuthorization()
+
+        if !UserDefaults.standard.bool(forKey: PrefKey.didCompleteOnboarding) {
+            showOnboarding(force: false)
+        } else if !AccessibilityPermission.isTrusted {
             showAccessibilityOnboarding()
         }
     }
@@ -45,6 +53,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    private func showOnboarding(force: Bool) {
+        if onboardingWindow != nil { return }
+        let controller = OnboardingWindowController { [weak self] in
+            UserDefaults.standard.set(true, forKey: PrefKey.didCompleteOnboarding)
+            self?.onboardingWindow?.window?.orderOut(nil)
+            self?.onboardingWindow = nil
+        }
+        self.onboardingWindow = controller
+        controller.present()
     }
 
     private func showAccessibilityOnboarding() {

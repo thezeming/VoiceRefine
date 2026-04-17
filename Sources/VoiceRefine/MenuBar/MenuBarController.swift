@@ -3,9 +3,12 @@ import AppKit
 final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private let onShowSettings: () -> Void
+    private let onShowOnboarding: () -> Void
 
-    init(onShowSettings: @escaping () -> Void) {
+    init(onShowSettings: @escaping () -> Void,
+         onShowOnboarding: @escaping () -> Void) {
         self.onShowSettings = onShowSettings
+        self.onShowOnboarding = onShowOnboarding
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
         configureMenu()
@@ -54,6 +57,14 @@ final class MenuBarController: NSObject {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
+        let onboardingItem = NSMenuItem(
+            title: "Onboarding…",
+            action: #selector(showOnboarding),
+            keyEquivalent: ""
+        )
+        onboardingItem.target = self
+        menu.addItem(onboardingItem)
+
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(
@@ -68,5 +79,9 @@ final class MenuBarController: NSObject {
 
     @objc private func showSettings() {
         onShowSettings()
+    }
+
+    @objc private func showOnboarding() {
+        onShowOnboarding()
     }
 }

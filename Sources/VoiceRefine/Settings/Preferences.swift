@@ -13,6 +13,8 @@ enum PrefKey {
     static let hotkeyModifierFlags     = "hotkeyModifierFlags"
 
     static let modelStorageOverride    = "modelStorageOverride"
+
+    static let didCompleteOnboarding   = "didCompleteOnboarding"
 }
 
 enum PrefDefaults {
@@ -51,7 +53,9 @@ enum PrefDefaults {
             PrefKey.hotkeyKeyCode:          49,
             PrefKey.hotkeyModifierFlags:    Int(NSEvent.ModifierFlags.option.rawValue),
 
-            PrefKey.modelStorageOverride:   ""
+            PrefKey.modelStorageOverride:   "",
+
+            PrefKey.didCompleteOnboarding:  false
         ]
 
         for provider in TranscriptionProviderID.allCases {

@@ -172,6 +172,10 @@ final class DictationPipeline {
             return out.isEmpty ? raw : out
         } catch {
             NSLog("VoiceRefine: refinement via \(providerID.rawValue) failed (\(error)); falling back to raw")
+            NotificationDispatcher.postError(
+                title: "\(providerID.displayName) refinement unavailable",
+                message: "Pasted raw transcript instead. \(String(describing: error))"
+            )
             return raw
         }
     }
@@ -212,6 +216,7 @@ final class DictationPipeline {
 
     private func flashError(_ message: String) {
         transition(to: .error(message))
+        NotificationDispatcher.postError(title: "VoiceRefine error", message: message)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             guard let self else { return }
             if case .error = self.state {
