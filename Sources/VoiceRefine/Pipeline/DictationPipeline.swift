@@ -20,6 +20,8 @@ final class DictationPipeline {
     private let whisperKitProvider = WhisperKitProvider()
     private let ollamaProvider    = OllamaProvider()
     private let noOpProvider      = NoOpProvider()
+    private let contextGatherer   = ContextGatherer.shared
+    private var pendingContext: RefinementContext = .empty
     private var hotkeyManager: HotkeyManager?
     private var maxDurationCutoff: DispatchWorkItem?
     private var currentTranscriptionTask: Task<Void, Never>?
@@ -71,6 +73,14 @@ final class DictationPipeline {
 
         if state == .recording { return }
 
+        // Snapshot context now — while the user's target app is still the
+        // frontmost one. By release it usually still is, but capturing at
+        // begin makes us robust against the user tabbing away mid-record.
+        pendingContext = contextGatherer.gather()
+        if !pendingContext.isEmpty {
+            NSLog("VoiceRefine: context — app=\(pendingContext.frontmostApp ?? "-"), window=\(pendingContext.windowTitle ?? "-"), selection=\(pendingContext.selectedText?.prefix(40) ?? "-"), glossary=\(pendingContext.glossary == nil ? "none" : "\(pendingContext.glossary!.count) chars")")
+        }
+
         do {
             try recorder.start()
             transition(to: .recording)
@@ -106,6 +116,8 @@ final class DictationPipeline {
 
         let model = UserDefaults.standard.string(forKey: TranscriptionProviderID.whisperKit.modelPreferenceKey)
             ?? TranscriptionProviderID.whisperKit.defaultModel
+        let context = pendingContext
+        pendingContext = .empty
 
         currentTranscriptionTask = Task { [weak self] in
             guard let self else { return }
@@ -116,7 +128,7 @@ final class DictationPipeline {
                 if Task.isCancelled { return }
                 NSLog("VoiceRefine: raw transcript (\(String(format: "%.2fs", transcribeElapsed)) on \(model)) — \(raw)")
 
-                let refined = await self.refine(raw: raw)
+                let refined = await self.refine(raw: raw, context: context)
                 if Task.isCancelled { return }
                 NSLog("VoiceRefine: refined transcript — \(refined)")
 
@@ -139,7 +151,7 @@ final class DictationPipeline {
     /// Runs the configured refinement provider on a raw transcript. Falls
     /// back to the raw text if the provider errors — we never want to lose
     /// the user's dictation just because Ollama is down.
-    private func refine(raw: String) async -> String {
+    private func refine(raw: String, context: RefinementContext) async -> String {
         let providerID = RefinementProviderID(
             rawValue: UserDefaults.standard.string(forKey: PrefKey.selectedRefinementProvider) ?? ""
         ) ?? .ollama
@@ -155,7 +167,6 @@ final class DictationPipeline {
 
         let systemPrompt = UserDefaults.standard.string(forKey: PrefKey.refinementSystemPrompt)
             ?? PrefDefaults.refinementSystemPrompt
-        let context = RefinementContext.empty // Phase 6 fills in app/window/selection/glossary
 
         do {
             let started = Date()
