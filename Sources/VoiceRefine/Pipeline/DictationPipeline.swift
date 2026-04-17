@@ -90,6 +90,10 @@ final class DictationPipeline {
             NSLog("VoiceRefine: context — app=\(pendingContext.frontmostApp ?? "-"), window=\(pendingContext.windowTitle ?? "-"), selection=\(pendingContext.selectedText?.prefix(40) ?? "-"), glossary=\(pendingContext.glossary == nil ? "none" : "\(pendingContext.glossary!.count) chars")")
         }
 
+        // Play start chirp *before* the mic tap opens so it isn't
+        // recorded into the buffer.
+        SoundEffect.start.play()
+
         do {
             try recorder.start()
             transition(to: .recording)
@@ -106,6 +110,10 @@ final class DictationPipeline {
 
         let duration = recorder.duration
         let audio = recorder.stop()
+
+        // Play stop chirp *after* the mic tap is removed so it isn't
+        // tacked onto the recorded buffer.
+        SoundEffect.stop.play()
 
         if duration < Self.minDuration {
             NSLog("VoiceRefine: discarded \(String(format: "%.3fs", duration)) recording (below \(Self.minDuration)s floor)")
