@@ -1,0 +1,25 @@
+## macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+## Swift Package Manager / Xcode build
+.build/
+.swiftpm/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+Package.resolved.lock
+DerivedData/
+
+## Local bundle output
+build/
+VoiceRefine.app/
+
+## Editor
+.vscode/
+.idea/
+*.swp
+
+## Env / secrets
+.env
+.env.*
