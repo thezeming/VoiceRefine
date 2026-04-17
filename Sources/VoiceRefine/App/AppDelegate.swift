@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        NSApp.mainMenu = MainMenuBuilder.build()
 
         let settingsController = SettingsWindowController()
         self.settingsWindowController = settingsController

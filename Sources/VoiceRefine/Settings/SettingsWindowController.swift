@@ -7,7 +7,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let window = NSWindow(contentViewController: host)
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.title = "VoiceRefine Settings"
-        window.setContentSize(NSSize(width: 560, height: 380))
+        window.setContentSize(NSSize(width: 580, height: 460))
         window.isReleasedWhenClosed = false
         window.center()
         self.init(window: window)
