@@ -8,16 +8,42 @@ final class MenuBarController: NSObject {
         self.onShowSettings = onShowSettings
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
-        configure()
+        configureMenu()
+        apply(.idle)
     }
 
-    private func configure() {
-        if let button = statusItem.button,
-           let image = NSImage(systemSymbolName: "mic", accessibilityDescription: "VoiceRefine") {
-            image.isTemplate = true
-            button.image = image
-        }
+    // MARK: - State
 
+    func apply(_ state: DictationState) {
+        guard let button = statusItem.button else { return }
+        switch state {
+        case .idle:
+            setImage("mic",           button: button, template: true,  tint: nil)
+        case .recording:
+            setImage("mic.fill",      button: button, template: false, tint: .systemRed)
+        case .processing:
+            setImage("waveform",      button: button, template: true,  tint: nil)
+        case .error:
+            setImage("exclamationmark.triangle.fill",
+                                      button: button, template: false, tint: .systemYellow)
+        }
+    }
+
+    private func setImage(_ symbolName: String,
+                          button: NSStatusBarButton,
+                          template: Bool,
+                          tint: NSColor?) {
+        guard let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "VoiceRefine") else {
+            return
+        }
+        image.isTemplate = template
+        button.image = image
+        button.contentTintColor = tint
+    }
+
+    // MARK: - Menu
+
+    private func configureMenu() {
         let menu = NSMenu()
 
         let settingsItem = NSMenuItem(
