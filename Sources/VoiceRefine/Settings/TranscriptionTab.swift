@@ -47,13 +47,9 @@ struct TranscriptionTab: View {
             }
 
             Section {
-                HStack {
-                    Spacer()
-                    Button("Test") {}
-                        .disabled(true)
-                }
+                ProviderTestRow(kind: .transcription(provider))
             } footer: {
-                Text("Test button is wired in Phase 7.")
+                Text("Sends 1 second of silence through the provider — reports latency and any error.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

@@ -17,9 +17,17 @@ final class DictationPipeline {
     static let maxDuration: TimeInterval = 120.0
 
     private let recorder = AudioRecorder()
-    private let whisperKitProvider = WhisperKitProvider()
-    private let ollamaProvider    = OllamaProvider()
-    private let noOpProvider      = NoOpProvider()
+    // Transcription backends
+    private let whisperKitProvider     = WhisperKitProvider()
+    private let openAIWhisperProvider  = OpenAIWhisperProvider()
+    private let groqWhisperProvider    = GroqWhisperProvider()
+    // Refinement backends
+    private let ollamaProvider              = OllamaProvider()
+    private let noOpProvider                = NoOpProvider()
+    private let openAICompatibleProvider    = OpenAICompatibleProvider()
+    private let anthropicProvider           = AnthropicProvider()
+    private let openAIProvider              = OpenAIProvider()
+
     private let contextGatherer   = ContextGatherer.shared
     private var pendingContext: RefinementContext = .empty
     private var hotkeyManager: HotkeyManager?
@@ -114,8 +122,7 @@ final class DictationPipeline {
 
         transition(to: .processing)
 
-        let model = UserDefaults.standard.string(forKey: TranscriptionProviderID.whisperKit.modelPreferenceKey)
-            ?? TranscriptionProviderID.whisperKit.defaultModel
+        let (transcriptionProviderID, transcriptionProvider, transcriptionModel) = resolveTranscription()
         let context = pendingContext
         pendingContext = .empty
 
@@ -123,10 +130,10 @@ final class DictationPipeline {
             guard let self else { return }
             do {
                 let startedTranscribe = Date()
-                let raw = try await self.whisperKitProvider.transcribe(audio: audio, model: model)
+                let raw = try await transcriptionProvider.transcribe(audio: audio, model: transcriptionModel)
                 let transcribeElapsed = Date().timeIntervalSince(startedTranscribe)
                 if Task.isCancelled { return }
-                NSLog("VoiceRefine: raw transcript (\(String(format: "%.2fs", transcribeElapsed)) on \(model)) — \(raw)")
+                NSLog("VoiceRefine: raw transcript (\(String(format: "%.2fs", transcribeElapsed)) on \(transcriptionProviderID.rawValue)/\(transcriptionModel)) — \(raw)")
 
                 let refined = await self.refine(raw: raw, context: context)
                 if Task.isCancelled { return }
@@ -150,20 +157,9 @@ final class DictationPipeline {
 
     /// Runs the configured refinement provider on a raw transcript. Falls
     /// back to the raw text if the provider errors — we never want to lose
-    /// the user's dictation just because Ollama is down.
+    /// the user's dictation just because the remote API is down.
     private func refine(raw: String, context: RefinementContext) async -> String {
-        let providerID = RefinementProviderID(
-            rawValue: UserDefaults.standard.string(forKey: PrefKey.selectedRefinementProvider) ?? ""
-        ) ?? .ollama
-
-        let provider: any RefinementProvider
-        switch providerID {
-        case .ollama:           provider = ollamaProvider
-        case .noOp:             provider = noOpProvider
-        default:
-            NSLog("VoiceRefine: refinement provider '\(providerID.rawValue)' not implemented yet (Phase 7), returning raw.")
-            return raw
-        }
+        let (providerID, provider) = resolveRefinement()
 
         let systemPrompt = UserDefaults.standard.string(forKey: PrefKey.refinementSystemPrompt)
             ?? PrefDefaults.refinementSystemPrompt
@@ -178,6 +174,40 @@ final class DictationPipeline {
             NSLog("VoiceRefine: refinement via \(providerID.rawValue) failed (\(error)); falling back to raw")
             return raw
         }
+    }
+
+    // MARK: - Provider resolution
+
+    private func resolveTranscription() -> (TranscriptionProviderID, any TranscriptionProvider, String) {
+        let id = TranscriptionProviderID(
+            rawValue: UserDefaults.standard.string(forKey: PrefKey.selectedTranscriptionProvider) ?? ""
+        ) ?? .whisperKit
+
+        let model = UserDefaults.standard.string(forKey: id.modelPreferenceKey) ?? id.defaultModel
+
+        let provider: any TranscriptionProvider
+        switch id {
+        case .whisperKit:    provider = whisperKitProvider
+        case .openAIWhisper: provider = openAIWhisperProvider
+        case .groq:          provider = groqWhisperProvider
+        }
+        return (id, provider, model)
+    }
+
+    private func resolveRefinement() -> (RefinementProviderID, any RefinementProvider) {
+        let id = RefinementProviderID(
+            rawValue: UserDefaults.standard.string(forKey: PrefKey.selectedRefinementProvider) ?? ""
+        ) ?? .ollama
+
+        let provider: any RefinementProvider
+        switch id {
+        case .ollama:           provider = ollamaProvider
+        case .noOp:             provider = noOpProvider
+        case .openAICompatible: provider = openAICompatibleProvider
+        case .anthropic:        provider = anthropicProvider
+        case .openAI:           provider = openAIProvider
+        }
+        return (id, provider)
     }
 
     private func flashError(_ message: String) {

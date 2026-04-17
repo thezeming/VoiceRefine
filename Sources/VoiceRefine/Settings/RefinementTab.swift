@@ -50,11 +50,7 @@ struct RefinementTab: View {
             }
 
             Section {
-                HStack {
-                    Spacer()
-                    Button("Test") {}
-                        .disabled(true)
-                }
+                ProviderTestRow(kind: .refinement(provider))
             } footer: {
                 Text(footerText)
                     .font(.footnote)

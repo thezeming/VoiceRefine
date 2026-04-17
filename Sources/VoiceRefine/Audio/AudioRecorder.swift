@@ -128,50 +128,23 @@ final class AudioRecorder {
 
     // MARK: - WAV export
 
-    func writeWAV(to url: URL) throws {
+    /// Returns the accumulated PCM packaged as WAV bytes. Cloud
+    /// transcription providers upload this; the disk write below uses
+    /// the same bytes.
+    func makeWAVData() -> Data {
         let pcm = queue.sync { accumulatedData }
-        let sampleRate   = UInt32(targetFormat.sampleRate)
-        let channels     = UInt16(targetFormat.channelCount)
-        let bitsPerSample: UInt16 = 16
-        let byteRate     = sampleRate * UInt32(channels) * UInt32(bitsPerSample) / 8
-        let blockAlign   = channels * bitsPerSample / 8
-        let dataSize     = UInt32(pcm.count)
-        let riffSize     = dataSize + 36
+        return WAVEncoder.encode(
+            pcm: pcm,
+            sampleRate: Int(targetFormat.sampleRate),
+            channels: Int(targetFormat.channelCount),
+            bitsPerSample: 16
+        )
+    }
 
-        var wav = Data()
-        wav.appendASCII("RIFF")
-        wav.appendLE(riffSize)
-        wav.appendASCII("WAVE")
-
-        wav.appendASCII("fmt ")
-        wav.appendLE(UInt32(16))       // PCM subchunk size
-        wav.appendLE(UInt16(1))        // AudioFormat = PCM
-        wav.appendLE(channels)
-        wav.appendLE(sampleRate)
-        wav.appendLE(byteRate)
-        wav.appendLE(blockAlign)
-        wav.appendLE(bitsPerSample)
-
-        wav.appendASCII("data")
-        wav.appendLE(dataSize)
-        wav.append(pcm)
-
+    func writeWAV(to url: URL) throws {
+        let wav = makeWAVData()
         let parent = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
         try wav.write(to: url, options: .atomic)
-    }
-}
-
-private extension Data {
-    mutating func appendASCII(_ s: String) {
-        append(contentsOf: s.utf8)
-    }
-    mutating func appendLE(_ v: UInt16) {
-        var le = v.littleEndian
-        Swift.withUnsafeBytes(of: &le) { append(contentsOf: $0) }
-    }
-    mutating func appendLE(_ v: UInt32) {
-        var le = v.littleEndian
-        Swift.withUnsafeBytes(of: &le) { append(contentsOf: $0) }
     }
 }
