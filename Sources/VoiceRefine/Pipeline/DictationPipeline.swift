@@ -18,6 +18,8 @@ final class DictationPipeline {
 
     private let recorder = AudioRecorder()
     private let whisperKitProvider = WhisperKitProvider()
+    private let ollamaProvider    = OllamaProvider()
+    private let noOpProvider      = NoOpProvider()
     private var hotkeyManager: HotkeyManager?
     private var maxDurationCutoff: DispatchWorkItem?
     private var currentTranscriptionTask: Task<Void, Never>?
@@ -25,6 +27,8 @@ final class DictationPipeline {
     private(set) var state: DictationState = .idle
 
     var onStateChange: ((DictationState) -> Void)?
+    /// Fires with the final (refined) transcript once the full pipeline
+    /// completes. Phase 5 hooks the paste engine here.
     var onTranscript: ((String) -> Void)?
 
     // MARK: - Lifecycle
@@ -106,15 +110,18 @@ final class DictationPipeline {
         currentTranscriptionTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let started = Date()
-                let text = try await self.whisperKitProvider.transcribe(audio: audio, model: model)
-                let elapsed = Date().timeIntervalSince(started)
-
+                let startedTranscribe = Date()
+                let raw = try await self.whisperKitProvider.transcribe(audio: audio, model: model)
+                let transcribeElapsed = Date().timeIntervalSince(startedTranscribe)
                 if Task.isCancelled { return }
+                NSLog("VoiceRefine: raw transcript (\(String(format: "%.2fs", transcribeElapsed)) on \(model)) — \(raw)")
 
-                NSLog("VoiceRefine: transcript (\(String(format: "%.2fs", elapsed)) on \(model)) — \(text)")
+                let refined = await self.refine(raw: raw)
+                if Task.isCancelled { return }
+                NSLog("VoiceRefine: refined transcript — \(refined)")
+
                 await MainActor.run {
-                    self.onTranscript?(text)
+                    self.onTranscript?(refined)
                     if self.state == .processing {
                         self.transition(to: .idle)
                     }
@@ -124,6 +131,41 @@ final class DictationPipeline {
                 NSLog("VoiceRefine: transcription error — \(error)")
                 await MainActor.run { self.flashError("Transcription failed.") }
             }
+        }
+    }
+
+    // MARK: - Refinement
+
+    /// Runs the configured refinement provider on a raw transcript. Falls
+    /// back to the raw text if the provider errors — we never want to lose
+    /// the user's dictation just because Ollama is down.
+    private func refine(raw: String) async -> String {
+        let providerID = RefinementProviderID(
+            rawValue: UserDefaults.standard.string(forKey: PrefKey.selectedRefinementProvider) ?? ""
+        ) ?? .ollama
+
+        let provider: any RefinementProvider
+        switch providerID {
+        case .ollama:           provider = ollamaProvider
+        case .noOp:             provider = noOpProvider
+        default:
+            NSLog("VoiceRefine: refinement provider '\(providerID.rawValue)' not implemented yet (Phase 7), returning raw.")
+            return raw
+        }
+
+        let systemPrompt = UserDefaults.standard.string(forKey: PrefKey.refinementSystemPrompt)
+            ?? PrefDefaults.refinementSystemPrompt
+        let context = RefinementContext.empty // Phase 6 fills in app/window/selection/glossary
+
+        do {
+            let started = Date()
+            let out = try await provider.refine(transcript: raw, systemPrompt: systemPrompt, context: context)
+            let elapsed = Date().timeIntervalSince(started)
+            NSLog("VoiceRefine: refined via \(providerID.rawValue) in \(String(format: "%.2fs", elapsed))")
+            return out.isEmpty ? raw : out
+        } catch {
+            NSLog("VoiceRefine: refinement via \(providerID.rawValue) failed (\(error)); falling back to raw")
+            return raw
         }
     }
 
