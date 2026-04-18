@@ -54,7 +54,7 @@ private struct OnboardingView: View {
     @State private var ollamaState: OllamaState = .notInstalled
     @State private var ollamaInstalledModels: [String] = []
     @State private var selectedOllamaModel: String = UserDefaults.standard.string(forKey: RefinementProviderID.ollama.modelPreferenceKey)
-        ?? RefinementProviderID.ollama.defaultModel ?? "llama3.2:3b"
+        ?? RefinementProviderID.ollama.defaultModel ?? "qwen2.5:7b"
     @State private var ollamaPullProgress: Double = 0
     @State private var isPullingOllama: Bool = false
     @State private var pullMessage: String = ""

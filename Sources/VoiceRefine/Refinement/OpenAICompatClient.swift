@@ -11,7 +11,8 @@ enum OpenAICompatClient {
         let model: String
         let systemPrompt: String
         let userMessage: String
-        var temperature: Double = 0.3
+        var temperature: Double = 0.1
+        var stop: [String] = RefinementStopSequences.openAICompatible
         var timeout: TimeInterval = 60
         /// Extra headers (Anthropic uses x-api-key + anthropic-version; we
         /// don't reuse this client for Anthropic, but leave the hook in).
@@ -46,7 +47,7 @@ enum OpenAICompatClient {
         }
         urlRequest.timeoutInterval = request.timeout
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": request.model,
             "stream": false,
             "temperature": request.temperature,
@@ -55,6 +56,9 @@ enum OpenAICompatClient {
                 ["role": "user",   "content": request.userMessage]
             ]
         ]
+        if !request.stop.isEmpty {
+            body["stop"] = request.stop
+        }
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
 
         let (data, response): (Data, URLResponse)
@@ -84,7 +88,7 @@ enum OpenAICompatClient {
             guard let first = decoded.choices.first else {
                 throw ClientError.malformedResponse
             }
-            return first.message.content.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+            return RefinementOutputSanitizer.sanitize(first.message.content)
         } catch is ClientError {
             throw ClientError.malformedResponse
         } catch {

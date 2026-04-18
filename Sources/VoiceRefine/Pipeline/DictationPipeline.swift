@@ -187,7 +187,19 @@ final class DictationPipeline {
             let out = try await provider.refine(transcript: raw, systemPrompt: systemPrompt, context: context)
             let elapsed = Date().timeIntervalSince(started)
             NSLog("VoiceRefine: refined via \(providerID.rawValue) in \(String(format: "%.2fs", elapsed))")
-            return out.isEmpty ? raw : out
+            if out.isEmpty { return raw }
+
+            let leak = ContextLeakDetector.evaluate(output: out, context: context)
+            if leak.leaked {
+                let sample = (leak.sample ?? "").prefix(60).replacingOccurrences(of: "\n", with: " ")
+                NSLog("VoiceRefine: refinement leak detected (field=\(leak.matchedField ?? "?"), sample=\"\(sample)…\"); falling back to raw transcript")
+                NotificationDispatcher.postError(
+                    title: "Refinement leaked context",
+                    message: "The model copied your \(leak.matchedField ?? "context") into its reply. Pasted raw transcript instead."
+                )
+                return raw
+            }
+            return out
         } catch {
             NSLog("VoiceRefine: refinement via \(providerID.rawValue) failed (\(error)); falling back to raw")
             NotificationDispatcher.postError(

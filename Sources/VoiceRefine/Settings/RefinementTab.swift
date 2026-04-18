@@ -81,7 +81,7 @@ private struct OllamaStatusBlock: View {
     @State private var pullMessage: String = ""
 
     @AppStorage(RefinementProviderID.ollama.modelPreferenceKey)
-    private var selectedModel: String = RefinementProviderID.ollama.defaultModel ?? "llama3.2:3b"
+    private var selectedModel: String = RefinementProviderID.ollama.defaultModel ?? "qwen2.5:7b"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {

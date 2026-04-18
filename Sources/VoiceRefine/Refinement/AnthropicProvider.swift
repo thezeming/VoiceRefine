@@ -52,6 +52,8 @@ final class AnthropicProvider: RefinementProvider {
         let body: [String: Any] = [
             "model": model,
             "max_tokens": Self.maxTokens,
+            "temperature": 0.1,
+            "stop_sequences": RefinementStopSequences.anthropic,
             "system": systemPrompt,
             "messages": [
                 ["role": "user", "content": userMessage]
@@ -95,7 +97,7 @@ final class AnthropicProvider: RefinementProvider {
                 .filter { $0.type == "text" }
                 .compactMap { $0.text }
                 .joined()
-            return text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+            return RefinementOutputSanitizer.sanitize(text)
         } catch {
             throw ProviderError.malformedResponse
         }

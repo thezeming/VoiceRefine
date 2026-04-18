@@ -113,7 +113,7 @@ struct RefinementContext {
 ```
 
 **Implementations for v1:**
-- **`OllamaProvider`** (default, local). Talks to `http://localhost:11434/v1/chat/completions`. Auto-lists installed models via `GET /api/tags`. Default model: `llama3.2:3b`. Other good choices: `qwen2.5:7b`, `mistral:7b`.
+- **`OllamaProvider`** (default, local). Talks to `http://localhost:11434/v1/chat/completions`. Auto-lists installed models via `GET /api/tags`. Default model: `qwen2.5:7b`. Other choices: `llama3.2:3b` (faster but more prone to leaking envelope tags), `mistral:7b`.
 - `NoOpProvider` (local, zero-dep). Returns transcript unchanged. Useful if the user doesn't want Ollama.
 - `OpenAICompatibleProvider` (cloud or self-hosted) — user-configurable base URL + key + model. Covers LM Studio, Together, Fireworks, etc.
 - `AnthropicProvider` (cloud, optional). Default: `claude-sonnet-4-6`.
@@ -137,7 +137,7 @@ struct RefinementContext {
    - Accessibility permission (with deep link to System Settings).
    - Download default Whisper model (`base.en`, ~142 MB) with progress bar.
    - Detect Ollama. If not installed, show instructions (`brew install ollama` or ollama.com) and an option to skip (fall back to `NoOpProvider`).
-   - If Ollama is installed but `llama3.2:3b` isn't pulled, offer to pull it.
+   - If Ollama is installed but `qwen2.5:7b` isn't pulled, offer to pull it.
 10. User-visible error notifications (`UNUserNotificationCenter`) on pipeline failures — never silent.
 
 ### v1.1 — Context gathering
@@ -169,32 +169,28 @@ struct RefinementContext {
 
 ## Default refinement system prompt
 
-Baked-in but user-editable:
+Baked-in but user-editable. The authoritative copy lives in
+`PrefDefaults.refinementSystemPrompt` (`Sources/VoiceRefine/Settings/Preferences.swift`).
+Summary of the contract it imposes on the model:
 
-```
-You are cleaning up voice-dictated text from a software engineer who is
-speaking to an AI coding assistant. The transcript came from a speech-to-text
-model and will contain misrecognitions of technical terms.
+- Return only the cleaned `<transcript>` — no preamble, no quotes, no fences.
+- Treat `<context>`, `<selected_text>`, `<text_before_cursor>`, and
+  `<glossary>` as METADATA: read silently for disambiguation, never copy
+  words from them into the output.
+- Do not answer questions in the transcript; the transcript is a prompt
+  destined for a downstream assistant.
+- Includes one before/after example. The example matters more than any
+  amount of additional rule text for small local models — Qwen 2.5 7B
+  follows a single demonstration far more reliably than longer
+  instruction blocks.
 
-Your job: fix likely misrecognitions of programming terms, library names,
-CLI commands, file paths, and common technical jargon (regex, OAuth, async,
-kubectl, TypeScript, useEffect, etc.). Fix obvious grammar slips from spoken
-English. Normalize numbers and punctuation.
-
-Hard rules:
-- Preserve the speaker's intent exactly. Do not add, remove, or reinterpret
-  content.
-- Do NOT answer questions in the transcript. Treat the transcript as a
-  prompt that will be sent to ANOTHER assistant — your output is that
-  prompt, cleaned up.
-- If a <glossary> is provided, prefer terms from it over guesses.
-- If <context> is provided, use frontmost app and selected text to
-  disambiguate ambiguous words.
-- Output ONLY the cleaned text. No preamble, no quotation marks, no
-  markdown fences, no "Here's the cleaned version:" prefix. Just the text.
-```
-
-Kept deliberately short — local 3B-parameter models follow short, direct prompts better than long ones.
+A deterministic post-processor (`RefinementOutputSanitizer`) runs on every
+provider's reply as a safety net for the failure modes the prompt cannot
+fully suppress: leading preambles ("Here's the cleaned text:"), wrapping
+quotes/backticks, markdown fences, and stray protocol tags. The model
+also receives `stop` / `stop_sequences` covering `</transcript>`,
+`<context>`, `</context>`, `<glossary>`, `</glossary>` so an
+envelope-echo response is truncated server-side.
 
 ---
 
@@ -305,7 +301,7 @@ Work through these **in order**. At the end of each phase, commit to git and sho
 - `OllamaProvider` implementation talking to `http://localhost:11434/v1/chat/completions`.
 - Onboarding checks for Ollama; if missing, shows install instructions.
 - `OllamaProvider.listModels()` hits `/api/tags`.
-- If `llama3.2:3b` isn't pulled, settings shows a "Pull" button that POSTs to `/api/pull` and streams progress.
+- If `qwen2.5:7b` isn't pulled, settings shows a "Pull" button that POSTs to `/api/pull` and streams progress.
 - Wire Phase 3 → Phase 4. Log raw + refined text. No context yet.
 
 **✅ Test:** Deliberately mumble a technical term. Raw output is wrong; refined output is better. Still no external network traffic.
@@ -337,7 +333,7 @@ Work through these **in order**. At the end of each phase, commit to git and sho
 - Error notifications via `UNUserNotificationCenter`.
 - First-run onboarding window covering mic → accessibility → Whisper model download → Ollama check.
 - App icon.
-- README with setup steps: install the app, install Ollama (`brew install ollama && ollama serve`), pull `llama3.2:3b`.
+- README with setup steps: install the app, install Ollama (`brew install ollama && ollama serve`), pull `qwen2.5:7b`.
 
 **✅ Test:** Delete models + Keychain entries + reset UserDefaults. Relaunch. Onboarding walks through all steps. Disconnect from wifi — app still works fully.
 

@@ -46,7 +46,7 @@ enum RefinementProviderID: String, CaseIterable, Identifiable, Hashable {
     var availableModels: [String] {
         switch self {
         case .ollama:
-            return ["llama3.2:3b", "qwen2.5:7b", "mistral:7b"]
+            return ["qwen2.5:7b", "llama3.2:3b", "mistral:7b"]
         case .noOp:
             return []
         case .openAICompatible:

@@ -23,7 +23,8 @@ Think Superwhisper / Wispr Flow, but hackable, local-first, and free.
   The full Xcode.app is **not** required.
 - **Ollama** (optional, recommended) — default local refiner.
   `brew install ollama && ollama serve`, then the onboarding wizard can
-  pull `llama3.2:3b` for you (~2 GB).
+  pull `qwen2.5:7b` for you (~4.7 GB). The 7B model handles the cleanup
+  task much more reliably than smaller alternatives.
 
 ## Build & run
 
@@ -98,9 +99,12 @@ CLAUDE.md                                        # invariants, decisions log, go
   or open *Ollama.app*.
 - **Slow first recording** — WhisperKit downloads the model on the
   first press (~142 MB). Subsequent recordings are fast.
-- **Refinement is too aggressive / off-topic** — the default
-  `llama3.2:3b` is small. Try `ollama pull qwen2.5:7b` (or another
-  instruction-tuned 7B model) and select it in Settings → Refinement.
+- **Refinement is too aggressive / off-topic** — try a different
+  instruction-tuned model (e.g. `ollama pull mistral:7b`) and pick it in
+  Settings → Refinement. If the output occasionally contains stray words
+  like `transcript:` or wraps everything in quotes, that's the small-model
+  failure mode the sanitizer + stop sequences mitigate; switching to a
+  larger model is the cleanest fix.
 - **No network wanted** — once Whisper is downloaded and Ollama has its
   model, unplug wifi and the full pipeline still works. Verify with
   Little Snitch or `nettop`.

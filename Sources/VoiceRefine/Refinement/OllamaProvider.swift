@@ -38,7 +38,7 @@ final class OllamaProvider: RefinementProvider {
         let baseURLString = defaults.string(forKey: RefinementProviderID.ollama.baseURLPreferenceKey) ?? "http://localhost:11434"
         let model = defaults.string(forKey: RefinementProviderID.ollama.modelPreferenceKey)
             ?? RefinementProviderID.ollama.defaultModel
-            ?? "llama3.2:3b"
+            ?? "qwen2.5:7b"
 
         guard let url = URL(string: baseURLString.trimmingCharacters(in: .whitespaces))?
                 .appendingPathComponent("v1/chat/completions") else {
@@ -50,7 +50,8 @@ final class OllamaProvider: RefinementProvider {
         let body: [String: Any] = [
             "model": model,
             "stream": false,
-            "temperature": 0.3,
+            "temperature": 0.1,
+            "stop": RefinementStopSequences.openAICompatible,
             "messages": [
                 ["role": "system", "content": systemPrompt],
                 ["role": "user",   "content": userMessage]
@@ -92,7 +93,7 @@ final class OllamaProvider: RefinementProvider {
             guard let first = decoded.choices.first else {
                 throw ProviderError.malformedResponse
             }
-            return first.message.content.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+            return RefinementOutputSanitizer.sanitize(first.message.content)
         } catch {
             throw ProviderError.malformedResponse
         }
