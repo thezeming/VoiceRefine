@@ -4,6 +4,7 @@ struct RefinementContext: Sendable {
     var frontmostApp: String?
     var windowTitle: String?
     var selectedText: String?
+    var textBeforeCursor: String?
     var glossary: String?
 
     static let empty = RefinementContext()
@@ -12,6 +13,7 @@ struct RefinementContext: Sendable {
         (frontmostApp?.isEmpty ?? true)
             && (windowTitle?.isEmpty ?? true)
             && (selectedText?.isEmpty ?? true)
+            && (textBeforeCursor?.isEmpty ?? true)
             && (glossary?.isEmpty ?? true)
     }
 }
@@ -60,6 +62,7 @@ enum RefinementMessageBuilder {
 
         let hasContext = !(context.frontmostApp ?? "").isEmpty
             || !(context.selectedText ?? "").isEmpty
+            || !(context.textBeforeCursor ?? "").isEmpty
         if hasContext {
             parts.append("")
             parts.append("<!-- METADATA ONLY — never copy any text below into your output. -->")
@@ -69,6 +72,9 @@ enum RefinementMessageBuilder {
             }
             if let sel = context.selectedText, !sel.isEmpty {
                 parts.append("  <selected_text>\(xmlEscape(sel))</selected_text>")
+            }
+            if let before = context.textBeforeCursor, !before.isEmpty {
+                parts.append("  <text_before_cursor>\(xmlEscape(before))</text_before_cursor>")
             }
             parts.append("</context>")
         }

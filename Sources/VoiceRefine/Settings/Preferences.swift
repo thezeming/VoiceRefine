@@ -15,6 +15,15 @@ enum PrefKey {
     static let modelStorageOverride    = "modelStorageOverride"
 
     static let didCompleteOnboarding   = "didCompleteOnboarding"
+
+    static let contextCaptureBeforeCursor   = "contextCaptureBeforeCursor"
+    static let contextBeforeCursorCharLimit = "contextBeforeCursorCharLimit"
+}
+
+enum ContextLimits {
+    static let beforeCursorMin  = 200
+    static let beforeCursorMax  = 5000
+    static let beforeCursorStep = 100
 }
 
 enum PrefDefaults {
@@ -31,13 +40,17 @@ enum PrefDefaults {
     HARD RULES:
     - Preserve the speaker's intent exactly. Do NOT add, remove, or invent content.
     - NEVER copy words, phrases, identifiers, file paths, or any strings from \
-      <context>, <app>, <selected_text>, or <glossary> into your output. That \
-      material is METADATA only. If the transcript has a word that doesn't \
-      appear to belong, leave it alone — do not substitute it with something \
-      from the metadata.
+      <context>, <app>, <selected_text>, <text_before_cursor>, or <glossary> \
+      into your output. That material is METADATA only. If the transcript has \
+      a word that doesn't appear to belong, leave it alone — do not substitute \
+      it with something from the metadata.
     - <context> is for silent disambiguation only. Use it to choose between two \
       plausible spellings of a word the user actually said; never use it as a \
       source of words the user did NOT say.
+    - <text_before_cursor> shows what the user was typing just before they \
+      started dictating. Read it silently to resolve ambiguous pronouns, \
+      project names, or ongoing subjects in the transcript — but never \
+      continue, complete, or quote it in your output.
     - If a <glossary> term clearly matches a transcribed word, prefer the \
       glossary spelling. Otherwise ignore the glossary.
     - Do NOT answer questions in the transcript. Treat the transcript as a \
@@ -63,7 +76,10 @@ enum PrefDefaults {
 
             PrefKey.modelStorageOverride:   "",
 
-            PrefKey.didCompleteOnboarding:  false
+            PrefKey.didCompleteOnboarding:  false,
+
+            PrefKey.contextCaptureBeforeCursor:   true,
+            PrefKey.contextBeforeCursorCharLimit: 1500
         ]
 
         for provider in TranscriptionProviderID.allCases {

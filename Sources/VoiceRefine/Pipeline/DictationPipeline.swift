@@ -87,7 +87,13 @@ final class DictationPipeline {
         // begin makes us robust against the user tabbing away mid-record.
         pendingContext = contextGatherer.gather()
         if !pendingContext.isEmpty {
-            NSLog("VoiceRefine: context — app=\(pendingContext.frontmostApp ?? "-"), window=\(pendingContext.windowTitle ?? "-"), selection=\(pendingContext.selectedText?.prefix(40) ?? "-"), glossary=\(pendingContext.glossary == nil ? "none" : "\(pendingContext.glossary!.count) chars")")
+            let beforeDesc: String
+            if let before = pendingContext.textBeforeCursor {
+                beforeDesc = "\(before.count) chars"
+            } else {
+                beforeDesc = "none"
+            }
+            NSLog("VoiceRefine: context — app=\(pendingContext.frontmostApp ?? "-"), window=\(pendingContext.windowTitle ?? "-"), selection=\(pendingContext.selectedText?.prefix(40) ?? "-"), beforeCursor=\(beforeDesc), glossary=\(pendingContext.glossary == nil ? "none" : "\(pendingContext.glossary!.count) chars")")
         }
 
         // Play start chirp *before* the mic tap opens so it isn't

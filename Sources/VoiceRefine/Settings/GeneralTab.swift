@@ -6,6 +6,9 @@ struct GeneralTab: View {
     @AppStorage(PrefKey.glossary)            private var glossary: String = ""
     @AppStorage(PrefKey.refinementSystemPrompt) private var systemPrompt: String = ""
 
+    @AppStorage(PrefKey.contextCaptureBeforeCursor)   private var captureBeforeCursor: Bool = true
+    @AppStorage(PrefKey.contextBeforeCursorCharLimit) private var beforeCursorLimit: Int = 1500
+
     var body: some View {
         Form {
             Section("Hotkey") {
@@ -36,6 +39,30 @@ struct GeneralTab: View {
                         }
                     }
                 Toggle("Play sound on record start/stop", isOn: $playStartStopSound)
+            }
+
+            Section {
+                Toggle("Use text before cursor as context", isOn: $captureBeforeCursor)
+                HStack {
+                    Text("Characters to capture")
+                    Spacer()
+                    Stepper(
+                        value: $beforeCursorLimit,
+                        in: ContextLimits.beforeCursorMin...ContextLimits.beforeCursorMax,
+                        step: ContextLimits.beforeCursorStep
+                    ) {
+                        Text("\(beforeCursorLimit)")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(!captureBeforeCursor)
+            } header: {
+                Text("Context")
+            } footer: {
+                Text("Reads the last N characters before your cursor via Accessibility so the refiner can disambiguate pronouns and project terms. Skipped for password fields and known password-manager apps.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             Section {
