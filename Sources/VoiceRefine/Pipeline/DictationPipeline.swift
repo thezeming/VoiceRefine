@@ -93,7 +93,10 @@ final class DictationPipeline {
             } else {
                 beforeDesc = "none"
             }
-            NSLog("VoiceRefine: context — app=\(pendingContext.frontmostApp ?? "-"), window=\(pendingContext.windowTitle ?? "-"), selection=\(pendingContext.selectedText?.prefix(40) ?? "-"), beforeCursor=\(beforeDesc), glossary=\(pendingContext.glossary == nil ? "none" : "\(pendingContext.glossary!.count) chars")")
+            let selDesc = pendingContext.selectedText == nil ? "none" : "\(pendingContext.selectedText!.count) chars"
+            let line = "context — app=\(pendingContext.frontmostApp ?? "-"), window=\(pendingContext.windowTitle ?? "-"), selection=\(selDesc), beforeCursor=\(beforeDesc), glossary=\(pendingContext.glossary == nil ? "none" : "\(pendingContext.glossary!.count) chars")"
+            NSLog("VoiceRefine: \(line)")
+            Self.appendContextDiagnostic(line)
         }
 
         // Play start chirp *before* the mic tap opens so it isn't
@@ -267,6 +270,37 @@ final class DictationPipeline {
             DispatchQueue.main.async { [weak self, newState] in
                 self?.onStateChange?(newState)
             }
+        }
+    }
+
+    // MARK: - Diagnostics
+
+    private static let diagnosticURL: URL = {
+        FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("Logs/VoiceRefine/context.log")
+    }()
+
+    private static let diagnosticFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    /// Appends one timestamped context-summary line to
+    /// `~/Library/Logs/VoiceRefine/context.log`. Counts only — never the
+    /// content itself. Parallel to `PasteEngine`'s paste.log so diagnostics
+    /// remain visible without admin `log stream`.
+    private static func appendContextDiagnostic(_ line: String) {
+        let url = diagnosticURL
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let stamped = diagnosticFormatter.string(from: Date()) + " " + line + "\n"
+        guard let data = stamped.data(using: .utf8) else { return }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+            _ = try? handle.close()
+        } else {
+            try? data.write(to: url)
         }
     }
 }
