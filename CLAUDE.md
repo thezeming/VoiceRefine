@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**VoiceRefine** — a native macOS menu-bar app (Swift/SwiftUI + AppKit) that runs a push-to-talk pipeline: audio → local Whisper transcription → local LLM refinement → paste into frontmost app. Runs fully on-device by default; cloud providers are optional. Project directory name `Hush` is the build workspace; the product/bundle is `VoiceRefine`.
+**VoiceRefine** — a native macOS menu-bar app (Swift/SwiftUI + AppKit) that runs a push-to-talk pipeline: audio → local Whisper transcription → local LLM refinement → paste into frontmost app. Runs fully on-device by default; cloud providers are optional.
 
 **`PLAN.md` at the repo root is the design source of truth.** Read it before any implementation work. This file captures only the things a future session would otherwise have to rediscover: workflow, invariants, and gotchas.
 
