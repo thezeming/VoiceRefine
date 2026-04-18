@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
 
 /// Pastes refined text into the frontmost app by synthesizing ⌘V.
@@ -27,6 +28,13 @@ final class PasteEngine {
 
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+
+        // Log AX trust state — if this is ever false on a paste that
+        // didn't land, the TCC grant has decayed (usually: binary resigned
+        // under a different identity; see `make setup-signing`).
+        let diag = "paste — AXIsProcessTrusted=\(AXIsProcessTrusted()), text.count=\(text.count)"
+        NSLog("VoiceRefine: \(diag)")
+        Self.appendDiagnostic(diag)
 
         // Post key events on the main queue so CGEvent has the run loop.
         DispatchQueue.main.async {
@@ -86,5 +94,33 @@ final class PasteEngine {
         up?.flags   = .maskCommand
         down?.post(tap: .cghidEventTap)
         up?.post(tap: .cghidEventTap)
+    }
+
+    private static let diagnosticURL: URL = {
+        FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("Logs/VoiceRefine/paste.log")
+    }()
+
+    private static let diagnosticFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    /// Appends one timestamped line to `~/Library/Logs/VoiceRefine/paste.log`.
+    /// Persists regardless of launch mode (direct/open/login), unlike
+    /// `NSLog`, which is only reachable via `log stream` and needs admin.
+    private static func appendDiagnostic(_ line: String) {
+        let url = diagnosticURL
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let stamped = diagnosticFormatter.string(from: Date()) + " " + line + "\n"
+        guard let data = stamped.data(using: .utf8) else { return }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+            _ = try? handle.close()
+        } else {
+            try? data.write(to: url)
+        }
     }
 }
