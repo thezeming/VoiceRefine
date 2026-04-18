@@ -107,4 +107,4 @@ CLAUDE.md                                        # invariants, decisions log, go
 
 ## License
 
-TBD — local project, not yet published.
+MIT — see [LICENSE](LICENSE).
