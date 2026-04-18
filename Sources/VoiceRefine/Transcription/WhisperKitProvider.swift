@@ -12,12 +12,15 @@ final class WhisperKitProvider: TranscriptionProvider {
         case emptyAudio
         case modelLoadFailed(Error)
         case transcribeFailed(Error)
+        case tokenizerFetchFailed(repo: String, file: String, underlying: Error)
 
         var description: String {
             switch self {
             case .emptyAudio:                    "Audio buffer is empty."
             case .modelLoadFailed(let err):      "WhisperKit could not load model: \(err.localizedDescription)"
             case .transcribeFailed(let err):     "WhisperKit transcription failed: \(err.localizedDescription)"
+            case .tokenizerFetchFailed(let repo, let file, let err):
+                "Could not fetch tokenizer file '\(file)' from huggingface.co/\(repo): \(err.localizedDescription). Check your internet connection or proxy settings."
             }
         }
     }
@@ -62,7 +65,10 @@ final class WhisperKitProvider: TranscriptionProvider {
 
         guard let whisperKit else { return "" }
         do {
+            let started = Date()
+            NSLog("VoiceRefine: WhisperKit transcribe start (\(samples.count) samples on '\(model)')")
             let results: [TranscriptionResult] = try await whisperKit.transcribe(audioArray: samples)
+            NSLog("VoiceRefine: WhisperKit transcribe done in \(String(format: "%.2fs", Date().timeIntervalSince(started)))")
             let joined = results.map(\.text).joined(separator: " ")
             return joined.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         } catch {
@@ -79,11 +85,18 @@ final class WhisperKitProvider: TranscriptionProvider {
         let base = Self.downloadBaseURL
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
 
+        // Pre-fetch tokenizer files with explicit timeouts. WhisperKit's
+        // internal tokenizer fetch (via swift-transformers' AutoTokenizer) has
+        // no per-request timeout — a network blip or HF rate-limit can hang
+        // model load forever with no UI feedback. Doing the fetch ourselves
+        // means a clear typed error instead of an infinite spinner.
+        try await Self.prefetchTokenizer(forModel: model, into: base)
+
         let config = WhisperKitConfig(
             model: model,
             downloadBase: base,
             verbose: false,
-            logLevel: .error,
+            logLevel: .info,
             prewarm: false,
             load: true,
             download: true,
@@ -91,14 +104,117 @@ final class WhisperKitProvider: TranscriptionProvider {
         )
 
         do {
+            let started = Date()
             NSLog("VoiceRefine: loading Whisper model '\(model)' from \(base.path)")
             let wk = try await WhisperKit(config)
             self.whisperKit = wk
             self.loadedModel = model
-            NSLog("VoiceRefine: Whisper model '\(model)' ready")
+            NSLog("VoiceRefine: Whisper model '\(model)' ready in \(String(format: "%.2fs", Date().timeIntervalSince(started)))")
+        } catch let err as ProviderError {
+            throw err
         } catch {
             throw ProviderError.modelLoadFailed(error)
         }
+    }
+
+    // MARK: - Tokenizer prefetch
+
+    private static let tokenizerFetchTimeoutSeconds: Double = 30 // per file
+
+    /// Maps a WhisperKit model identifier to its Hugging Face tokenizer repo
+    /// (always `openai/whisper-...`). Mirrors `WhisperKit.ModelUtilities
+    /// .tokenizerNameForVariant` — kept here so we can resolve the repo
+    /// without first loading the model. Note: large-v3-turbo shares the
+    /// large-v3 vocabulary, so it maps to `whisper-large-v3`.
+    static func tokenizerRepo(for model: String) -> String {
+        let stripped = model
+            .replacingOccurrences(of: "openai_whisper-", with: "")
+            .lowercased()
+        // Drop optional date-stamped suffixes like `_v20240930_turbo` —
+        // WhisperKit treats turbo as the v3 variant for tokenizer purposes.
+        let base: String
+        if stripped.contains("large-v3") {
+            base = "large-v3"
+        } else if stripped.contains("large-v2") {
+            base = "large-v2"
+        } else if stripped.hasPrefix("large") {
+            base = "large"
+        } else {
+            base = stripped
+        }
+        return "openai/whisper-\(base)"
+    }
+
+    /// Files swift-transformers / HF Hub looks for in a tokenizer repo.
+    /// `tokenizer.json` and `tokenizer_config.json` are required; the rest
+    /// are nice-to-have and we tolerate per-file 404s.
+    private static let tokenizerFiles: [(name: String, required: Bool)] = [
+        ("tokenizer.json",          true),
+        ("tokenizer_config.json",   true),
+        ("config.json",             true),
+        ("generation_config.json",  false),
+        ("special_tokens_map.json", false),
+        ("added_tokens.json",       false),
+        ("normalizer.json",         false),
+        ("preprocessor_config.json", false),
+        ("vocab.json",              false),
+        ("merges.txt",              false),
+    ]
+
+    private static func prefetchTokenizer(forModel model: String, into base: URL) async throws {
+        let repo = tokenizerRepo(for: model)
+        let folder = base
+            .appendingPathComponent("models", isDirectory: true)
+            .appendingPathComponent(repo, isDirectory: true)
+        let marker = folder.appendingPathComponent("tokenizer.json")
+        if FileManager.default.fileExists(atPath: marker.path) { return }
+
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let session = URLSession(configuration: {
+            let cfg = URLSessionConfiguration.ephemeral
+            cfg.timeoutIntervalForRequest = tokenizerFetchTimeoutSeconds
+            cfg.timeoutIntervalForResource = tokenizerFetchTimeoutSeconds * 2
+            cfg.waitsForConnectivity = false
+            return cfg
+        }())
+
+        NSLog("VoiceRefine: prefetching tokenizer for '\(model)' (HF repo: \(repo))")
+        for entry in tokenizerFiles {
+            let dest = folder.appendingPathComponent(entry.name)
+            if FileManager.default.fileExists(atPath: dest.path) { continue }
+            let url = URL(string: "https://huggingface.co/\(repo)/resolve/main/\(entry.name)")!
+            do {
+                let (data, response) = try await session.data(from: url)
+                guard let http = response as? HTTPURLResponse else {
+                    if entry.required {
+                        throw ProviderError.tokenizerFetchFailed(repo: repo, file: entry.name, underlying: URLError(.badServerResponse))
+                    }
+                    continue
+                }
+                if http.statusCode == 404 {
+                    if entry.required {
+                        throw ProviderError.tokenizerFetchFailed(repo: repo, file: entry.name, underlying: URLError(.fileDoesNotExist))
+                    }
+                    continue
+                }
+                guard (200..<300).contains(http.statusCode) else {
+                    if entry.required {
+                        throw ProviderError.tokenizerFetchFailed(repo: repo, file: entry.name, underlying: URLError(.badServerResponse))
+                    }
+                    continue
+                }
+                try data.write(to: dest, options: .atomic)
+            } catch let err as ProviderError {
+                throw err
+            } catch {
+                if entry.required {
+                    throw ProviderError.tokenizerFetchFailed(repo: repo, file: entry.name, underlying: error)
+                }
+                // Optional file — log and continue.
+                NSLog("VoiceRefine: tokenizer prefetch skipped optional file \(entry.name) (\(error.localizedDescription))")
+            }
+        }
+        NSLog("VoiceRefine: tokenizer cache ready at \(folder.path)")
     }
 
     // MARK: - Audio format helpers
