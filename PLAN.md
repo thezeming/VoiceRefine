@@ -35,7 +35,7 @@ Think Superwhisper / Wispr Flow, but hackable, local-first, and free.
 - **Min macOS:** 14.0 (Sonoma)
 - **Architecture:** Apple Silicon required (arm64). Intel Macs out of scope — WhisperKit targets the Neural Engine.
 - **Audio:** `AVAudioEngine` + `AVAudioFile`
-- **Transcription:** [`WhisperKit`](https://github.com/argmaxinc/WhisperKit) via SPM — runs Whisper locally on the Apple Neural Engine.
+- **Transcription:** [`WhisperKit`](https://github.com/argmaxinc/WhisperKit) via SPM — runs Whisper locally on the Apple Neural Engine. On macOS 26+ Apple's built-in `SpeechAnalyzer` / `SpeechTranscriber` (from the `Speech` framework, no SPM dep) is also available as `AppleSpeechProvider`.
 - **Local LLM:** [Ollama](https://ollama.com) running as a user-installed daemon on `localhost:11434`. We call its OpenAI-compatible endpoint.
 - **Global hotkey:** [`HotKey`](https://github.com/soffes/HotKey) Swift package.
 - **Secrets:** Keychain Services API (used only when the user opts into a cloud provider).
@@ -82,8 +82,9 @@ protocol TranscriptionProvider {
 }
 ```
 
-**Implementations for v1:**
-- **`WhisperKitProvider`** (default, local). Wraps the `WhisperKit` package. Models: `openai_whisper-base.en`, `openai_whisper-small.en`, `openai_whisper-medium.en`, `openai_whisper-large-v3-v20240930_turbo`. Models download on first use to `~/Library/Application Support/VoiceRefine/models/whisper/`.
+**Implementations:**
+- **`WhisperKitProvider`** (local; fresh-install default on macOS 14/15). Wraps the `WhisperKit` package. Models: `openai_whisper-base.en`, `openai_whisper-small.en`, `openai_whisper-medium.en`, `openai_whisper-large-v3-v20240930_turbo`. Models download on first use to `~/Library/Application Support/VoiceRefine/models/whisper/`.
+- **`AppleSpeechProvider`** (local; fresh-install default on macOS 26+). Uses Apple's `SpeechAnalyzer` + `SpeechTranscriber` from the system `Speech` framework — no SPM dep, no per-app model storage (assets managed by `AssetInventory`). The "Model" field in Settings is a locale id (`en_US`, `en_GB`, …); the picker is populated from `SpeechTranscriber.supportedLocales` at runtime. Gated `@available(macOS 26, *)`; invisible to users on older OSes via `TranscriptionProviderID.visibleCases`.
 - `GroqWhisperProvider` (optional, cloud).
 - `OpenAIWhisperProvider` (optional, cloud).
 
@@ -336,6 +337,18 @@ Work through these **in order**. At the end of each phase, commit to git and sho
 - README with setup steps: install the app, install Ollama (`brew install ollama && ollama serve`), pull `qwen2.5:7b`.
 
 **✅ Test:** Delete models + Keychain entries + reset UserDefaults. Relaunch. Onboarding walks through all steps. Disconnect from wifi — app still works fully.
+
+### Phase 9 — Apple `SpeechAnalyzer` provider (macOS 26+)
+
+Adds Apple's on-device `SpeechAnalyzer` + `SpeechTranscriber` (new in macOS 26) as a third **local** transcription option alongside WhisperKit. Not a replacement — both providers stay. All new code is gated `@available(macOS 26, *)` and falls through to WhisperKit on older OSes; `Package.swift` platform floor is unchanged. Build-time requires the macOS 26 SDK.
+
+- **9.1 — Scaffolding + picker gate.** `TranscriptionProviderID.appleSpeech` case, `visibleCases` picker filter, empty `AppleSpeechProvider` that throws "not implemented yet", `AppleSpeechAssetManager` with real locale-listing + install-check. Factory + pipeline resolver handle the new case with a WhisperKit fallback.
+- **9.2 — Real transcription path.** `SpeechAnalyzer(modules: [SpeechTranscriber(preset: .transcription)])` driven via `analyzeSequence(stream) + finalizeAndFinishThroughEndOfInput`. Audio format queried per-locale from `SpeechTranscriber.availableCompatibleAudioFormats` and converted via `AVAudioConverter` — hard-coding any format crashes `Speech.framework` with `EXC_BREAKPOINT` (see CLAUDE.md). `NSSpeechRecognitionUsageDescription` added to `Info.plist`.
+- **9.3 — Locale-install UI.** New `AppleSpeechLocaleRow` (SwiftUI) in the Transcription tab: status badge (Installed / Downloading / Not installed / Unsupported), Download button, live progress bar via KVO on `AssetInstallationRequest.progress.fractionCompleted`. Status check switched from the nil-return heuristic to `AssetInventory.status(forModules:) == .installed`. Reserves the locale with `AssetInventory.reserve(locale:)` before download.
+- **9.4 — Onboarding integration + fresh-install default flip.** `PrefDefaults.registerAll()` picks `.appleSpeech` as the fresh-install transcription default on macOS 26+ (`UserDefaults.register` only seeds unset keys so existing users' choices survive). Onboarding window replaces the fixed Whisper row with a provider-aware section — Apple Speech locale row (with a Download button + progress) when Apple Speech is selected, unchanged Whisper row otherwise.
+- **9.5 — Docs.** This section, plus the `Apple SpeechAnalyzer` gotcha block and three decisions-log entries in `CLAUDE.md`.
+
+**✅ Test (end-to-end):** On macOS 26+: wipe `selectedTranscriptionProvider` + `didCompleteOnboarding` from UserDefaults (`defaults delete com.voicerefine.VoiceRefine <key>`) and relaunch. Onboarding opens with an Apple Speech locale row. Install `en_US` (or your preferred locale) from the Download button. Dictate a short sentence — cleaned text pastes. Little Snitch / LuLu: zero outbound traffic once the asset is installed. Regression: WhisperKit remains selectable from the Transcription tab and unchanged on pre-Tahoe OSes.
 
 ---
 
