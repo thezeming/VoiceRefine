@@ -3,6 +3,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarController: MenuBarController?
     private var settingsWindowController: SettingsWindowController?
+    private var correctionWindowController: CorrectionWindowController?
     private var dictationPipeline: DictationPipeline?
     private var pasteEngine: PasteEngine?
     private var accessibilityWindow: AccessibilityPermissionWindowController?
@@ -15,12 +16,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsController = SettingsWindowController()
         self.settingsWindowController = settingsController
 
+        let correctionController = CorrectionWindowController()
+        self.correctionWindowController = correctionController
+
         let menuBar = MenuBarController(
             onShowSettings: { [weak settingsController] in
                 settingsController?.present()
             },
             onShowOnboarding: { [weak self] in
                 self?.showOnboarding(force: true)
+            },
+            onShowCorrection: { [weak correctionController] in
+                correctionController?.present()
             }
         )
         self.menuBarController = menuBar

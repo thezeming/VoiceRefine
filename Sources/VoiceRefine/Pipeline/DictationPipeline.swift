@@ -167,6 +167,17 @@ final class DictationPipeline {
                 NSLog("VoiceRefine: refined transcript — \(refined)")
 
                 await MainActor.run {
+                    // Record the result before firing onTranscript so the
+                    // "Correct last…" window is populated immediately.
+                    let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+                    LastRefinementStore.shared.store(
+                        LastRefinementStore.Entry(
+                            raw: raw,
+                            refined: refined,
+                            context: context,
+                            frontmostAppBundleID: bundleID
+                        )
+                    )
                     self.onTranscript?(refined)
                     if self.state == .processing {
                         self.transition(to: .idle)

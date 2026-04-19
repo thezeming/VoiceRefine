@@ -1,9 +1,13 @@
 import AppKit
 
-final class MenuBarController: NSObject {
+final class MenuBarController: NSObject, NSMenuDelegate {
     private let statusItem: NSStatusItem
     private let onShowSettings: () -> Void
     private let onShowOnboarding: () -> Void
+    private let onShowCorrection: () -> Void
+
+    /// Weak reference so we can toggle enabled state when the menu opens.
+    private weak var correctLastItem: NSMenuItem?
 
     // MARK: - Processing pulse
 
@@ -16,9 +20,11 @@ final class MenuBarController: NSObject {
     }
 
     init(onShowSettings: @escaping () -> Void,
-         onShowOnboarding: @escaping () -> Void) {
+         onShowOnboarding: @escaping () -> Void,
+         onShowCorrection: @escaping () -> Void) {
         self.onShowSettings = onShowSettings
         self.onShowOnboarding = onShowOnboarding
+        self.onShowCorrection = onShowCorrection
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
         configureMenu()
@@ -84,6 +90,20 @@ final class MenuBarController: NSObject {
 
     private func configureMenu() {
         let menu = NSMenu()
+        menu.delegate = self
+
+        // "Correct last…" — near the top; disabled until a paste has happened.
+        let correctItem = NSMenuItem(
+            title: "Correct last…",
+            action: #selector(showCorrection),
+            keyEquivalent: ""
+        )
+        correctItem.target = self
+        correctItem.isEnabled = false
+        menu.addItem(correctItem)
+        correctLastItem = correctItem
+
+        menu.addItem(.separator())
 
         let settingsItem = NSMenuItem(
             title: "Settings…",
@@ -113,11 +133,25 @@ final class MenuBarController: NSObject {
         statusItem.menu = menu
     }
 
+    // MARK: - NSMenuDelegate
+
+    func menuWillOpen(_ menu: NSMenu) {
+        // Update the enabled state lazily each time the menu opens so we
+        // don't need KVO or a notification for LastRefinementStore changes.
+        correctLastItem?.isEnabled = LastRefinementStore.shared.last != nil
+    }
+
+    // MARK: - Actions
+
     @objc private func showSettings() {
         onShowSettings()
     }
 
     @objc private func showOnboarding() {
         onShowOnboarding()
+    }
+
+    @objc private func showCorrection() {
+        onShowCorrection()
     }
 }

@@ -17,6 +17,11 @@ enum PrefKey {
     static let contextBeforeCursorCharLimit = "contextBeforeCursorCharLimit"
 
     static let disableDiagnosticLogs        = "disableDiagnosticLogs"
+
+    /// Newline-separated words/phrases accumulated by the "Correct last…"
+    /// flow. Stored in the same style as `glossary` (plain newline-delimited
+    /// text). Wiring into refinement context is a follow-up task.
+    static let learnedGlossary              = "learnedGlossary"
 }
 
 enum ContextLimits {
@@ -100,7 +105,9 @@ enum PrefDefaults {
             PrefKey.contextCaptureBeforeCursor:   true,
             PrefKey.contextBeforeCursorCharLimit: 1500,
 
-            PrefKey.disableDiagnosticLogs:        false
+            PrefKey.disableDiagnosticLogs:        false,
+
+            PrefKey.learnedGlossary:              ""
         ]
 
         for provider in TranscriptionProviderID.allCases {
