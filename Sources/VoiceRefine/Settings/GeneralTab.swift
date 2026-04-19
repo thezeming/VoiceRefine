@@ -9,6 +9,15 @@ struct GeneralTab: View {
     @AppStorage(PrefKey.contextCaptureBeforeCursor)   private var captureBeforeCursor: Bool = true
     @AppStorage(PrefKey.contextBeforeCursorCharLimit) private var beforeCursorLimit: Int = 1500
 
+    @AppStorage(PrefKey.selectedRefinementProvider)
+    private var refinementProviderRaw: String = RefinementProviderID.ollama.rawValue
+
+    private var activeCloudRefinerName: String? {
+        guard let id = RefinementProviderID(rawValue: refinementProviderRaw),
+              !id.isLocal else { return nil }
+        return id.displayName
+    }
+
     var body: some View {
         Form {
             Section("Hotkey") {
@@ -57,10 +66,22 @@ struct GeneralTab: View {
                     }
                 }
                 .disabled(!captureBeforeCursor)
+
+                if captureBeforeCursor, let cloudName = activeCloudRefinerName {
+                    Label {
+                        Text("Sent to **\(cloudName)** on every dictation. VoiceRefine redacts common credential patterns (API keys, Bearer tokens, private keys, JWTs) before upload, but review the footer below for the full caveat.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: "exclamationmark.shield.fill")
+                            .foregroundStyle(.orange)
+                    }
+                }
             } header: {
                 Text("Context")
             } footer: {
-                Text("Reads the last N characters before your cursor via Accessibility so the refiner can disambiguate pronouns and project terms. Skipped for password fields and known password-manager apps.")
+                Text("Reads the last N characters before your cursor via Accessibility so the refiner can disambiguate pronouns and project terms. Skipped for password fields and known password-manager apps. Redaction is best-effort — if the captured text contains anything you would not send to a cloud LLM, disable this toggle or switch to a local refiner (Ollama / No-Op).")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

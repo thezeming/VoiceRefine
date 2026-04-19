@@ -82,11 +82,18 @@ final class AppleSpeechProvider: TranscriptionProvider {
         let analyzer = SpeechAnalyzer(modules: [transcriber])
 
         // Drain `transcriber.results` on a background Task. The loop ends
-        // when `finalizeAndFinishThroughEndOfInput` closes the stream.
+        // when `finalizeAndFinishThroughEndOfInput` closes the stream, or
+        // early if the outer pipeline cancels us (new hotkey press while
+        // this one is still transcribing — PLAN invariant #9).
         let collectTask = Task { () -> String in
             var out = ""
-            for try await result in transcriber.results where result.isFinal {
-                out += String(result.text.characters)
+            do {
+                for try await result in transcriber.results where result.isFinal {
+                    try Task.checkCancellation()
+                    out += String(result.text.characters)
+                }
+            } catch is CancellationError {
+                return out
             }
             return out
         }
@@ -96,7 +103,16 @@ final class AppleSpeechProvider: TranscriptionProvider {
             try await analyzer.finalizeAndFinishThroughEndOfInput()
         } catch {
             collectTask.cancel()
+            await analyzer.cancelAndFinishNow()
             throw ProviderError.analyzerFailed(error)
+        }
+
+        // Check once more after the analyzer finishes — a cancel can land
+        // between analyzeSequence returning and here.
+        if Task.isCancelled {
+            collectTask.cancel()
+            await analyzer.cancelAndFinishNow()
+            throw CancellationError()
         }
 
         let text = (try? await collectTask.value) ?? ""

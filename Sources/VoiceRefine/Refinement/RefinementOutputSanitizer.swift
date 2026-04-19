@@ -8,16 +8,31 @@ import Foundation
 /// and closes the model would have to be parroting the prompt to emit.
 enum RefinementStopSequences {
     /// `stop` field accepted by OpenAI / Ollama / DeepSeek / OpenAI-compat.
+    /// Includes the inner tags inside `<context>` so the model truncates
+    /// immediately if it starts echoing `<selected_text>` or
+    /// `<text_before_cursor>` — both were common leak vectors before this
+    /// list was extended.
     static let openAICompatible: [String] = [
         "</transcript>",
         "<context>",
         "</context>",
+        "<text_before_cursor>",
+        "</text_before_cursor>",
+        "<selected_text>",
+        "</selected_text>",
         "<glossary>",
         "</glossary>",
     ]
-    /// Anthropic uses `stop_sequences`; same content, separate constant so
-    /// future divergence is local.
-    static let anthropic: [String] = openAICompatible
+    /// Anthropic caps `stop_sequences` at four. Keep the highest-signal
+    /// leak-start markers — closing `</transcript>` (model is done with
+    /// the real task) and the three tags whose bodies are the usual
+    /// culprits for verbatim plagiarism.
+    static let anthropic: [String] = [
+        "</transcript>",
+        "<context>",
+        "<text_before_cursor>",
+        "<selected_text>",
+    ]
 }
 
 /// Post-processes refinement-LLM output before it reaches the pasteboard.

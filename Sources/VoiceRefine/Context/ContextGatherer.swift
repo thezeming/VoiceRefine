@@ -51,11 +51,20 @@ final class ContextGatherer {
         let raw = gatherAX(captureBefore: captureBefore, beforeLimit: limit)
         let glossaryText = (defaults.string(forKey: PrefKey.glossary) ?? "")
             .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+
+        // Redact credentials out of both user-text channels before they
+        // cross into the refinement context. Applies to all providers —
+        // local AND cloud — because today's local Ollama is tomorrow's
+        // cloud refiner via a single settings toggle, and the captured
+        // context is indistinguishable once it's off the device.
+        let scrubbedSelection = raw.selectedText.map(SecretRedactor.redact)
+        let scrubbedBefore    = raw.textBeforeCursor.map(SecretRedactor.redact)
+
         return RefinementContext(
             frontmostApp:     raw.appName,
             windowTitle:      raw.windowTitle,
-            selectedText:     raw.selectedText,
-            textBeforeCursor: raw.textBeforeCursor,
+            selectedText:     scrubbedSelection,
+            textBeforeCursor: scrubbedBefore,
             glossary:         glossaryText.isEmpty ? nil : glossaryText
         )
     }
