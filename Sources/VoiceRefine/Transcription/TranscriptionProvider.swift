@@ -11,6 +11,18 @@ import Foundation
 protocol TranscriptionProvider: AnyObject {
     static var providerID: TranscriptionProviderID { get }
     func transcribe(audio: Data, model: String) async throws -> String
+
+    /// Streaming variant. Yields partial transcripts via `onPartial` as they
+    /// become available; returns the final aggregated string.
+    ///
+    /// The default implementation wraps `transcribe(audio:model:)` and does
+    /// **not** emit any partials — suitable for batch providers (WhisperKit,
+    /// cloud APIs) that have no native streaming.
+    func transcribeStreaming(
+        audio: Data,
+        model: String,
+        onPartial: @escaping @Sendable (String) -> Void
+    ) async throws -> String
 }
 
 extension TranscriptionProvider {
@@ -20,5 +32,14 @@ extension TranscriptionProvider {
     static var availableModels: [String] { providerID.availableModels }
     static var requiredKeys: [String] {
         providerID.apiKeyAccount.map { [$0] } ?? []
+    }
+
+    // Default: batch — no partials emitted.
+    func transcribeStreaming(
+        audio: Data,
+        model: String,
+        onPartial: @escaping @Sendable (String) -> Void
+    ) async throws -> String {
+        try await transcribe(audio: audio, model: model)
     }
 }

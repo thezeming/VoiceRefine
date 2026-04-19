@@ -46,9 +46,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switch state {
             case .recording:
                 hud?.show()
-            default:
+            case .idle, .error:
                 hud?.hide()
+            case .processing:
+                // Keep the HUD visible during processing so the final
+                // partial (if any) stays readable while refinement runs.
+                break
             }
+        }
+        pipeline.onPartialTranscript = { [weak hud] text in
+            hud?.updatePartial(text)
         }
         pipeline.onTranscript = { [weak paste] text in
             paste?.paste(text)

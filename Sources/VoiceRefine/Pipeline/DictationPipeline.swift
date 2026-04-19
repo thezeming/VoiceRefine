@@ -44,11 +44,18 @@ final class DictationPipeline {
     private var refinementOverride: RefinementProviderID? = nil
 
     private(set) var state: DictationState = .idle
+    /// Tracks the last time a partial-transcript was forwarded to
+    /// `onPartialTranscript`. Only accessed on the main thread.
+    private var partialLastEmit: Date = .distantPast
 
     var onStateChange: ((DictationState) -> Void)?
     /// Fires with the final (refined) transcript once the full pipeline
     /// completes. Phase 5 hooks the paste engine here.
     var onTranscript: ((String) -> Void)?
+    /// Fires with live partial transcripts during Apple Speech streaming.
+    /// Always called on the main thread. Throttled to ~5 Hz (200 ms minimum
+    /// between emissions). WhisperKit and cloud providers never fire this.
+    var onPartialTranscript: ((String) -> Void)?
 
     // MARK: - Init
 
@@ -174,9 +181,25 @@ final class DictationPipeline {
 
         currentTranscriptionTask = Task { [weak self] in
             guard let self else { return }
+            // Throttle state lives on MainActor to avoid data races.
+            // At most one partial emit per 200 ms (~5 Hz).
+            await MainActor.run { self.partialLastEmit = Date.distantPast }
             do {
                 let startedTranscribe = Date()
-                let raw = try await transcriptionProvider.transcribe(audio: audio, model: transcriptionModel)
+                let raw = try await transcriptionProvider.transcribeStreaming(
+                    audio: audio,
+                    model: transcriptionModel,
+                    onPartial: { [weak self] partial in
+                        guard let self else { return }
+                        Task { @MainActor [weak self] in
+                            guard let self else { return }
+                            let now = Date()
+                            guard now.timeIntervalSince(self.partialLastEmit) >= 0.2 else { return }
+                            self.partialLastEmit = now
+                            self.onPartialTranscript?(partial)
+                        }
+                    }
+                )
                 let transcribeElapsed = Date().timeIntervalSince(startedTranscribe)
                 if Task.isCancelled { return }
                 NSLog("VoiceRefine: raw transcript (\(String(format: "%.2fs", transcribeElapsed)) on \(transcriptionProviderID.rawValue)/\(transcriptionModel)) — \(raw)")

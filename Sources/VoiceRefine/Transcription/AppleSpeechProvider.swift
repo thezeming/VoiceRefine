@@ -119,6 +119,89 @@ final class AppleSpeechProvider: TranscriptionProvider {
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // MARK: - Streaming transcription
+
+    /// Real streaming implementation for Apple SpeechAnalyzer. Emits both
+    /// partial and final results via `onPartial` so the caller can show a
+    /// live caption in the HUD. Returns the last accumulated final string.
+    ///
+    /// Cancellation is cooperative: `try Task.checkCancellation()` inside the
+    /// result loop, and `await analyzer.cancelAndFinishNow()` on outer-task
+    /// cancellation (mirrors the existing `transcribe` implementation).
+    @available(macOS 26, *)
+    func transcribeStreaming(
+        audio: Data,
+        model: String,
+        onPartial: @escaping @Sendable (String) -> Void
+    ) async throws -> String {
+        guard !audio.isEmpty else { throw ProviderError.emptyAudio }
+
+        let locale = Locale(identifier: model)
+
+        if !(await AppleSpeechAssetManager.isInstalled(localeID: model)) {
+            throw ProviderError.assetNotInstalled(model)
+        }
+
+        let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+
+        let compatFormats = await transcriber.availableCompatibleAudioFormats
+        guard let targetFormat = compatFormats.first else {
+            throw ProviderError.noCompatibleAudioFormat
+        }
+
+        let buffer = try Self.convertInt16LE16kMono(data: audio, to: targetFormat)
+
+        let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+        continuation.yield(AnalyzerInput(buffer: buffer))
+        continuation.finish()
+
+        let analyzer = SpeechAnalyzer(modules: [transcriber])
+
+        // Drain results on a child Task, emitting every partial and
+        // accumulating the final string.
+        let collectTask = Task { () -> String in
+            var lastFinal = ""
+            do {
+                for try await result in transcriber.results {
+                    try Task.checkCancellation()
+                    // Collapse internal whitespace so multi-line partials
+                    // don't wreck the single-line HUD layout.
+                    let text = String(result.text.characters)
+                        .components(separatedBy: .newlines)
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                        .filter { !$0.isEmpty }
+                        .joined(separator: " ")
+                    guard !text.isEmpty else { continue }
+                    onPartial(text)
+                    if result.isFinal {
+                        lastFinal = text
+                    }
+                }
+            } catch is CancellationError {
+                return lastFinal
+            }
+            return lastFinal
+        }
+
+        do {
+            _ = try await analyzer.analyzeSequence(stream)
+            try await analyzer.finalizeAndFinishThroughEndOfInput()
+        } catch {
+            collectTask.cancel()
+            await analyzer.cancelAndFinishNow()
+            throw ProviderError.analyzerFailed(error)
+        }
+
+        if Task.isCancelled {
+            collectTask.cancel()
+            await analyzer.cancelAndFinishNow()
+            throw CancellationError()
+        }
+
+        let text = (try? await collectTask.value) ?? ""
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     // MARK: - Audio conversion
 
     /// Converts `AudioRecorder`'s 16 kHz mono Int16 PCM bytes into an

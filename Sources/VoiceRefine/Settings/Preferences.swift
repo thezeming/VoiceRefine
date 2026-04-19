@@ -27,6 +27,8 @@ enum PrefKey {
     /// per-app system prompt overrides. Empty string = no overrides.
     static let perAppSystemPrompts          = "perAppSystemPrompts"
     static let hotkeyGesture                = "hotkeyGesture"
+    /// When true, a floating HUD caption appears near the bottom of the
+    /// screen during recording / transcription (default: true).
     static let showRecordingIndicator       = "showRecordingIndicator"
 }
 
