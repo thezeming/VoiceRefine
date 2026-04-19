@@ -20,7 +20,7 @@ enum AudioVAD {
     ///   - data: Raw Int16 little-endian mono PCM at 16 kHz.
     ///   - frameMs: Analysis frame size in milliseconds. Default: 20 ms (= 320 samples).
     ///   - silenceHangoverMs: Extra padding to keep around voiced regions so
-    ///     word boundaries are not clipped. Default: 200 ms.
+    ///     word boundaries are not clipped. Default: 300 ms.
     /// - Returns: A subrange of `data` containing just the voiced region
     ///   (plus hangover padding), or the original `data` unchanged if no
     ///   voiced frames are detected. Always byte-aligned to a 2-byte (Int16)
@@ -28,7 +28,7 @@ enum AudioVAD {
     static func trim(
         _ data: Data,
         frameMs: Int = 20,
-        silenceHangoverMs: Int = 200
+        silenceHangoverMs: Int = 300
     ) -> Data {
         let samplesPerFrame = frameMs * sampleRate / 1_000        // 320 @ 20 ms
         let bytesPerFrame = samplesPerFrame * 2                   // 640 bytes
@@ -53,19 +53,22 @@ enum AudioVAD {
             }
         }
 
-        // --- Noise floor from edges (first ~100 ms and last ~100 ms) ---
-        // Use 5 frames (= 100 ms at 20 ms / frame) or however many exist.
-        let edgeFrames = max(1, 100 / frameMs)
-        let leadCount  = min(edgeFrames, frameCount)
-        let trailCount = min(edgeFrames, frameCount)
-
-        let leadMax  = rms[0..<leadCount].max() ?? 0
-        let trailMax = rms[(frameCount - trailCount)...].max() ?? 0
-        let edgeMax  = min(leadMax, trailMax)
-
-        // Guard against zero-floor (totally silent recording) so the voicing
-        // threshold never collapses to zero.
-        let noiseFloor: Float = max(edgeMax, 0.005)
+        // --- Noise floor from the 10th-percentile frame RMS ---
+        //
+        // The old edge-based estimate (min of first-100 ms max and
+        // last-100 ms max) broke for long dictations that begin and end
+        // with speech: both edges then carried voice-level energy, so
+        // the noise floor inflated to near-speech level and the threshold
+        // clipped the quieter leading syllables. P10 is dominated by
+        // inter-word gaps and low-energy consonants even in continuous
+        // speech, so it tracks the real mic-level noise regardless of
+        // where the user happened to pause. The hard cap at 0.02 keeps
+        // the estimate from drifting up in unusually loud environments
+        // where even "silence" between syllables is non-trivial.
+        let sorted = rms.sorted()
+        let p10Index = max(0, min(sorted.count - 1, sorted.count / 10))
+        let p10: Float = sorted[p10Index]
+        let noiseFloor: Float = max(min(p10, 0.02), 0.005)
 
         // --- Voicing threshold ---
         let threshold: Float = max(noiseFloor * 3, 0.015)
