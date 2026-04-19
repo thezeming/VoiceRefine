@@ -13,9 +13,9 @@ struct GeneralTab: View {
         Form {
             Section("Hotkey") {
                 LabeledContent("Push-to-talk") {
-                    Text("⌥ Space")
+                    Text("Double-tap ⇧ and hold")
                         .foregroundStyle(.secondary)
-                    + Text(" — recorder in Phase 2")
+                    + Text(" — release to transcribe")
                         .font(.footnote)
                         .foregroundStyle(.tertiary)
                 }

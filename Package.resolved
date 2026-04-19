@@ -1,15 +1,6 @@
 {
-  "originHash" : "3f3b22b95640bd6b4d46f3c908eee61ff03c1ef49a5bb91138225eb27d28ed6e",
+  "originHash" : "d5464e149213911488577c354db0c1ed28273aabb1dbd8ce36f5cf8d66baf3f4",
   "pins" : [
-    {
-      "identity" : "hotkey",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/soffes/HotKey.git",
-      "state" : {
-        "revision" : "a3cf605d7a96f6ff50e04fcb6dea6e2613cfcbe4",
-        "version" : "0.2.1"
-      }
-    },
     {
       "identity" : "swift-argument-parser",
       "kind" : "remoteSourceControl",

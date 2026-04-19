@@ -9,9 +9,6 @@ enum PrefKey {
     static let startAtLogin            = "startAtLogin"
     static let playStartStopSound      = "playStartStopSound"
 
-    static let hotkeyKeyCode           = "hotkeyKeyCode"
-    static let hotkeyModifierFlags     = "hotkeyModifierFlags"
-
     static let modelStorageOverride    = "modelStorageOverride"
 
     static let didCompleteOnboarding   = "didCompleteOnboarding"
@@ -93,10 +90,6 @@ enum PrefDefaults {
             PrefKey.refinementSystemPrompt: refinementSystemPrompt,
             PrefKey.startAtLogin:           false,
             PrefKey.playStartStopSound:     false,
-
-            // ⌥ Space: kVK_Space = 49, NSEvent.ModifierFlags.option.rawValue.
-            PrefKey.hotkeyKeyCode:          49,
-            PrefKey.hotkeyModifierFlags:    Int(NSEvent.ModifierFlags.option.rawValue),
 
             PrefKey.modelStorageOverride:   "",
 

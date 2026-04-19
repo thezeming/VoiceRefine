@@ -10,14 +10,12 @@ let package = Package(
         .executable(name: "VoiceRefine", targets: ["VoiceRefine"])
     ],
     dependencies: [
-        .package(url: "https://github.com/soffes/HotKey.git", from: "0.2.0"),
         .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.9.0")
     ],
     targets: [
         .executableTarget(
             name: "VoiceRefine",
             dependencies: [
-                .product(name: "HotKey", package: "HotKey"),
                 .product(name: "WhisperKit", package: "WhisperKit")
             ],
             path: "Sources/VoiceRefine"
