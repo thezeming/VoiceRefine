@@ -60,6 +60,10 @@ final class DictationPipeline {
     /// Fires with the final (refined) transcript once the full pipeline
     /// completes. Phase 5 hooks the paste engine here.
     var onTranscript: (@MainActor (String) -> Void)?
+    /// Called by the retry-last path instead of `onTranscript`. AppDelegate
+    /// wires this to `PasteEngine.paste(_:replacingPrevious: true)` so the
+    /// new text replaces (not appends to) the previous paste.
+    var onRetryTranscript: (@MainActor (String) -> Void)?
     /// Fires with live partial transcripts during Apple Speech streaming.
     /// Always called on the main thread. Throttled to ~5 Hz (200 ms minimum
     /// between emissions). WhisperKit and cloud providers never fire this.
@@ -279,7 +283,13 @@ final class DictationPipeline {
                     context: context,
                     frontmostAppBundleID: bundleID
                 )
-                self.onTranscript?(refined)
+                // Retry path uses the replace-previous variant so the
+                // corrected text overwrites the original paste.
+                if let onRetry = self.onRetryTranscript {
+                    onRetry(refined)
+                } else {
+                    self.onTranscript?(refined)
+                }
                 self.isRetrying = false
                 if self.state == .processing {
                     self.transition(to: .idle)

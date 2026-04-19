@@ -1,5 +1,12 @@
 import AppKit
 
+extension Notification.Name {
+    /// Posted whenever the user picks a different hotkey gesture in
+    /// Settings. `HotkeyManager` listens and live-reloads its monitors so
+    /// no app restart is needed.
+    static let voiceRefineHotkeyGestureChanged = Notification.Name("VoiceRefineHotkeyGestureChanged")
+}
+
 // MARK: - Gesture enum
 
 /// The set of hotkey gestures the user can choose from. Stored as a String
@@ -26,9 +33,10 @@ enum HotkeyGesture: String, CaseIterable {
 
 // MARK: - HotkeyManager
 
-/// Manages push-to-talk gesture recognition. The active gesture is read from
-/// `PrefKey.hotkeyGesture` at init time. Changes take effect after an app
-/// restart (simpler than hot-swapping monitors mid-session).
+/// Manages push-to-talk gesture recognition. The active gesture is read
+/// from `PrefKey.hotkeyGesture` at init time AND re-read whenever
+/// `.voiceRefineHotkeyGestureChanged` fires (the Settings picker posts
+/// this onChange), so the user doesn't need to restart the app.
 ///
 /// `onPress` fires when the gesture is fully confirmed as deliberate.
 /// `onRelease` fires when the user ends the hold. The contract with
@@ -42,7 +50,8 @@ final class HotkeyManager {
     private let onPress: @MainActor () -> Void
     private let onRelease: @MainActor () -> Void
 
-    private let gesture: HotkeyGesture
+    private(set) var gesture: HotkeyGesture
+    nonisolated(unsafe) private var prefObserver: NSObjectProtocol?
 
     // These three are accessed only on main (via @MainActor methods and
     // NSEvent callbacks). `nonisolated(unsafe)` lets deinit release them
@@ -86,6 +95,16 @@ final class HotkeyManager {
         gesture = HotkeyGesture(rawValue: raw) ?? .doubleTapShift
 
         reload()
+
+        // Live-reload when the user picks a different gesture in Settings.
+        // Block API + main-queue avoids any selector / Sendable friction.
+        prefObserver = NotificationCenter.default.addObserver(
+            forName: .voiceRefineHotkeyGestureChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reloadFromPrefs() }
+        }
     }
 
     // deinit cannot be @MainActor-isolated; unregister() is called from
@@ -95,6 +114,23 @@ final class HotkeyManager {
         if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
         if let localMonitor  { NSEvent.removeMonitor(localMonitor)  }
         holdConfirmWorkItem?.cancel()
+        if let prefObserver { NotificationCenter.default.removeObserver(prefObserver) }
+    }
+
+    /// Re-reads `PrefKey.hotkeyGesture` and reinstalls monitors if it
+    /// changed. Mid-hold gestures get a clean `onRelease` first via
+    /// `unregister()`.
+    func reloadFromPrefs() {
+        let raw = UserDefaults.standard.string(forKey: PrefKey.hotkeyGesture) ?? ""
+        let next = HotkeyGesture(rawValue: raw) ?? .doubleTapShift
+        guard next != gesture else { return }
+        unregister()
+        gesture = next
+        doubleTapState = .idle
+        holdActive = false
+        previousFlags = []
+        reload()
+        NSLog("VoiceRefine: hotkey gesture changed → \(next.rawValue)")
     }
 
     /// (Re)installs the flagsChanged monitors.

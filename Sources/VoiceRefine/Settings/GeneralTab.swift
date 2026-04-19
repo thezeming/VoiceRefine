@@ -48,10 +48,16 @@ struct GeneralTab: View {
                         Text(gesture.displayName).tag(gesture.rawValue)
                     }
                 }
+                .onChange(of: hotkeyGestureRaw) { _, _ in
+                    NotificationCenter.default.post(
+                        name: .voiceRefineHotkeyGestureChanged,
+                        object: nil
+                    )
+                }
             } header: {
                 Text("Hotkey")
             } footer: {
-                Text("Release the gesture to transcribe. Restart VoiceRefine for gesture changes to take effect.")
+                Text("Release the gesture to transcribe. Changes apply immediately — no restart needed. Press \u{2303}\u{2318}R from any app to retry the last refinement.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

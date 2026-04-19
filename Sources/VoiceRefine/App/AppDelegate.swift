@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var accessibilityWindow: AccessibilityPermissionWindowController?
     private var onboardingWindow: OnboardingWindowController?
     private var hudController: HUDWindowController?
+    private var retryHotkey: RetryHotkey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -61,8 +62,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pipeline.onTranscript = { [weak paste] text in
             paste?.paste(text)
         }
+        pipeline.onRetryTranscript = { [weak paste] text in
+            // Retry: undo the previous paste then write the corrected text.
+            paste?.paste(text, replacingPrevious: true)
+        }
         pipeline.start()
         self.dictationPipeline = pipeline
+
+        // ⌃⌘R from any app — fires the same retry path the menu item uses.
+        // Re-activates the original target app first so the paste lands
+        // back in the right window.
+        retryHotkey = RetryHotkey { [weak pipeline, weak menuBar] in
+            guard let entry = TranscriptionHistory.shared.mostRecent() else { return }
+            if let bundleID = entry.frontmostAppBundleID,
+               let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first {
+                app.activate()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                _ = menuBar // keep alive so the pulse timer stays valid
+                pipeline?.retryLastRefinement()
+            }
+        }
 
         NotificationDispatcher.requestAuthorization()
 

@@ -24,7 +24,25 @@ final class PasteEngine {
         self.restoreDelay = restoreDelay
     }
 
-    func paste(_ text: String) {
+    /// Paste `text` into the frontmost app. When `replacingPrevious` is true,
+    /// send ⌘Z first to undo the previous paste, then ⌘V the new text — used
+    /// by "Retry last" so the corrected version replaces the original instead
+    /// of accumulating after it. Relies on the target app having the previous
+    /// paste at the top of its undo stack; safe no-op for apps without undo.
+    func paste(_ text: String, replacingPrevious: Bool = false) {
+        if replacingPrevious {
+            Self.synthesizeCommandZ()
+            // Brief gap so the target app processes the undo before we
+            // begin the new paste — otherwise CGEvent posts can race.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+                self?.pasteImpl(text)
+            }
+        } else {
+            pasteImpl(text)
+        }
+    }
+
+    private func pasteImpl(_ text: String) {
         guard !text.isEmpty else { return }
 
         let pasteboard = NSPasteboard.general
@@ -93,6 +111,20 @@ final class PasteEngine {
         let source = CGEventSource(stateID: .combinedSessionState)
         let down = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: true)
         let up   = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: false)
+        down?.flags = .maskCommand
+        up?.flags   = .maskCommand
+        down?.post(tap: .cghidEventTap)
+        up?.post(tap: .cghidEventTap)
+    }
+
+    /// `kVK_ANSI_Z = 0x06`. Used by `paste(_:replacingPrevious: true)` to
+    /// undo the previous paste before writing the new one.
+    private static let zKeyCode: CGKeyCode = 0x06
+
+    private static func synthesizeCommandZ() {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        let down = CGEvent(keyboardEventSource: source, virtualKey: zKeyCode, keyDown: true)
+        let up   = CGEvent(keyboardEventSource: source, virtualKey: zKeyCode, keyDown: false)
         down?.flags = .maskCommand
         up?.flags   = .maskCommand
         down?.post(tap: .cghidEventTap)
