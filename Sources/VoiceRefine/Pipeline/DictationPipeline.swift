@@ -42,8 +42,9 @@ final class DictationPipeline {
     private var pendingContext: RefinementContext = .empty
     /// Bundle ID of the frontmost app captured at `beginRecording()`. Stored
     /// separately from `pendingContext` because `RefinementContext` carries
-    /// only the localized app name (for LLM use), not the bundle id (for
-    /// re-activation from retry / correct-last).
+    /// only the localized app name (for LLM use), not the bundle id —
+    /// needed for re-activation (retry / correct-last) AND per-app
+    /// system-prompt overrides in `refine(raw:context:bundleID:)`.
     private var pendingBundleID: String? = nil
     private var hotkeyManager: HotkeyManager?
     private var maxDurationCutoff: DispatchWorkItem?
@@ -176,7 +177,7 @@ final class DictationPipeline {
                 if Task.isCancelled { return }
                 NSLog("VoiceRefine: raw transcript (\(String(format: "%.2fs", transcribeElapsed)) on \(transcriptionProviderID.rawValue)/\(transcriptionModel)) — \(raw)")
 
-                let refined = await self.refine(raw: raw, context: context)
+                let refined = await self.refine(raw: raw, context: context, bundleID: bundleID)
                 if Task.isCancelled { return }
                 NSLog("VoiceRefine: refined transcript — \(refined)")
 
@@ -230,7 +231,7 @@ final class DictationPipeline {
 
         currentTranscriptionTask = Task { [weak self] in
             guard let self else { return }
-            let refined = await self.refine(raw: raw, context: context)
+            let refined = await self.refine(raw: raw, context: context, bundleID: bundleID)
             if Task.isCancelled {
                 await MainActor.run {
                     self.isRetrying = false
@@ -260,11 +261,27 @@ final class DictationPipeline {
     /// Runs the configured refinement provider on a raw transcript. Falls
     /// back to the raw text if the provider errors — we never want to lose
     /// the user's dictation just because the remote API is down.
-    private func refine(raw: String, context: RefinementContext) async -> String {
+    ///
+    /// - Parameters:
+    ///   - bundleID: Bundle ID of the frontmost app at recording time. Used to
+    ///     look up a per-app system-prompt override from `PerAppPromptStore`.
+    ///     When a match is found, it replaces the global system prompt only —
+    ///     all other pipeline protections (sanitizer, leak guard, stop
+    ///     sequences) are unaffected.
+    private func refine(raw: String, context: RefinementContext, bundleID: String?) async -> String {
         let (providerID, provider) = resolveRefinement()
 
-        let systemPrompt = UserDefaults.standard.string(forKey: PrefKey.refinementSystemPrompt)
-            ?? PrefDefaults.refinementSystemPrompt
+        // Resolve system prompt: per-app override wins if present, otherwise
+        // fall back to the user's global prompt (or the compiled-in default).
+        let systemPrompt: String
+        if let bid = bundleID, !bid.isEmpty,
+           let override = PerAppPromptStore.load()[bid], !override.isEmpty {
+            NSLog("VoiceRefine: per-app prompt override for \(bid)")
+            systemPrompt = override
+        } else {
+            systemPrompt = UserDefaults.standard.string(forKey: PrefKey.refinementSystemPrompt)
+                ?? PrefDefaults.refinementSystemPrompt
+        }
 
         do {
             let started = Date()

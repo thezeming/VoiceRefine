@@ -23,6 +23,8 @@ enum PrefKey {
     /// text). Wiring into refinement context is a follow-up task.
     static let learnedGlossary              = "learnedGlossary"
 
+    /// JSON-encoded `[String: String]` — keys are bundle IDs, values are
+    /// per-app system prompt overrides. Empty string = no overrides.
     static let perAppSystemPrompts          = "perAppSystemPrompts"
     static let hotkeyGesture                = "hotkeyGesture"
     static let showRecordingIndicator       = "showRecordingIndicator"
