@@ -26,8 +26,6 @@ struct AdvancedTab: View {
                 Button("Reveal logs folder in Finder") {
                     revealLogsFolder()
                 }
-                Button("Clear transcription history") {}
-                    .disabled(true)
                 Button("Clear all Keychain entries", role: .destructive) {
                     showingClearKeychainConfirm = true
                 }
