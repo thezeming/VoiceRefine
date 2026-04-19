@@ -3,6 +3,7 @@ import AppKit
 
 struct AdvancedTab: View {
     @AppStorage(PrefKey.modelStorageOverride) private var modelStorageOverride: String = ""
+    @AppStorage(PrefKey.disableDiagnosticLogs) private var disableDiagnosticLogs: Bool = false
 
     @State private var showingClearKeychainConfirm: Bool = false
 
@@ -18,6 +19,16 @@ struct AdvancedTab: View {
                 Text("Model storage override")
             } footer: {
                 Text("Leave blank to use ~/Library/Application Support/VoiceRefine/models/.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Disable diagnostic logs", isOn: $disableDiagnosticLogs)
+            } header: {
+                Text("Diagnostics")
+            } footer: {
+                Text("When off, ~/Library/Logs/VoiceRefine/paste.log and context.log record per-dictation counts (never the dictated text). Logs rotate at 256 KB. Disable to turn logging off entirely.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

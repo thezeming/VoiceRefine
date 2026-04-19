@@ -15,6 +15,8 @@ enum PrefKey {
 
     static let contextCaptureBeforeCursor   = "contextCaptureBeforeCursor"
     static let contextBeforeCursorCharLimit = "contextBeforeCursorCharLimit"
+
+    static let disableDiagnosticLogs        = "disableDiagnosticLogs"
 }
 
 enum ContextLimits {
@@ -96,7 +98,9 @@ enum PrefDefaults {
             PrefKey.didCompleteOnboarding:  false,
 
             PrefKey.contextCaptureBeforeCursor:   true,
-            PrefKey.contextBeforeCursorCharLimit: 1500
+            PrefKey.contextBeforeCursorCharLimit: 1500,
+
+            PrefKey.disableDiagnosticLogs:        false
         ]
 
         for provider in TranscriptionProviderID.allCases {

@@ -22,13 +22,19 @@ enum OpenAICompatClient {
     enum ClientError: Error, CustomStringConvertible {
         case unreachable(String)
         case httpStatus(Int, String?)
-        case malformedResponse
+        case malformedResponse(underlying: Error?)
 
         var description: String {
             switch self {
-            case .unreachable(let s):         "Could not reach \(s)."
-            case .httpStatus(let c, let b):   "HTTP \(c). \(b ?? "")"
-            case .malformedResponse:          "Unexpected response shape."
+            case .unreachable(let s):
+                return "Could not reach \(s)."
+            case .httpStatus(let c, let b):
+                return "HTTP \(c). \(b ?? "")"
+            case .malformedResponse(let underlying):
+                if let underlying {
+                    return "Unexpected response shape: \(underlying.localizedDescription)"
+                }
+                return "Unexpected response shape."
             }
         }
     }
@@ -69,7 +75,7 @@ enum OpenAICompatClient {
         }
 
         guard let http = response as? HTTPURLResponse else {
-            throw ClientError.malformedResponse
+            throw ClientError.malformedResponse(underlying: nil)
         }
         guard (200..<300).contains(http.statusCode) else {
             throw ClientError.httpStatus(http.statusCode, String(data: data, encoding: .utf8))
@@ -86,13 +92,17 @@ enum OpenAICompatClient {
         do {
             let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
             guard let first = decoded.choices.first else {
-                throw ClientError.malformedResponse
+                throw ClientError.malformedResponse(underlying: nil)
             }
             return RefinementOutputSanitizer.sanitize(first.message.content)
-        } catch is ClientError {
-            throw ClientError.malformedResponse
+        } catch let clientError as ClientError {
+            throw clientError
         } catch {
-            throw ClientError.malformedResponse
+            // Surface the JSONDecoder diagnostic so self-hosted endpoints
+            // with drifting response shapes are debuggable — previously
+            // every decoder failure collapsed to the opaque "Unexpected
+            // response shape." with no pointer to the missing field.
+            throw ClientError.malformedResponse(underlying: error)
         }
     }
 }

@@ -74,15 +74,7 @@ final class KeychainStore {
     }
 
     func delete(account: String) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
-        let status = SecItemDelete(query as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw KeychainError.unexpectedStatus(status)
-        }
+        try deleteWithoutNotifying(account: account)
         NotificationCenter.default.post(name: .voiceRefineKeychainDidChange, object: self)
     }
 
@@ -102,11 +94,30 @@ final class KeychainStore {
             }
             throw KeychainError.unexpectedStatus(status)
         }
+        // Delete silently in the loop, then post a single change
+        // notification — listeners don't care *which* account was
+        // cleared, just that the set changed.
         for entry in entries {
             if let account = entry[kSecAttrAccount as String] as? String,
                account.hasPrefix(prefix) {
-                try delete(account: account)
+                try deleteWithoutNotifying(account: account)
             }
+        }
+        NotificationCenter.default.post(name: .voiceRefineKeychainDidChange, object: self)
+    }
+
+    /// Does the Keychain delete without posting `.voiceRefineKeychainDidChange`.
+    /// Public `delete` / `deleteAll` wrap this so callers always see a
+    /// notification at the right time without a post-per-item flood.
+    private func deleteWithoutNotifying(account: String) throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainError.unexpectedStatus(status)
         }
     }
 }
