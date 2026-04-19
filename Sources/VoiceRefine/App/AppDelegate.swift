@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.pasteEngine = paste
 
         let pipeline = DictationPipeline()
+        menuBar.setPipeline(pipeline)
         pipeline.onStateChange = { [weak menuBar] state in
             menuBar?.apply(state)
         }

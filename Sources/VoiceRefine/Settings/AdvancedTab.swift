@@ -6,6 +6,10 @@ struct AdvancedTab: View {
     @AppStorage(PrefKey.disableDiagnosticLogs) private var disableDiagnosticLogs: Bool = false
 
     @State private var showingClearKeychainConfirm: Bool = false
+    @State private var showingClearHistoryConfirm: Bool = false
+    /// Tracks whether history is empty so the button label can reflect the
+    /// current count. Refreshed .onAppear and after clearing.
+    @State private var historyCount: Int = 0
 
     var body: some View {
         Form {
@@ -50,9 +54,28 @@ struct AdvancedTab: View {
                     }
                     Button("Cancel", role: .cancel) {}
                 }
+
+                let historyLabel = historyCount == 0
+                    ? "Clear transcription history"
+                    : "Clear transcription history (\(historyCount))"
+                Button(historyLabel, role: .destructive) {
+                    showingClearHistoryConfirm = true
+                }
+                .disabled(historyCount == 0)
+                .confirmationDialog(
+                    "Delete all \(historyCount) transcription history entries?",
+                    isPresented: $showingClearHistoryConfirm,
+                    titleVisibility: .visible
+                ) {
+                    Button("Clear History", role: .destructive) {
+                        clearTranscriptionHistory()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                }
             }
         }
         .formStyle(.grouped)
+        .onAppear { historyCount = TranscriptionHistory.shared.entries.count }
     }
 
     private func chooseStorageFolder() {
@@ -80,6 +103,13 @@ struct AdvancedTab: View {
             + RefinementProviderID.allCases.map { "\($0.rawValue)." }
         for prefix in providerPrefixes {
             try? KeychainStore.shared.deleteAll(withPrefix: prefix)
+        }
+    }
+
+    private func clearTranscriptionHistory() {
+        Task { @MainActor in
+            TranscriptionHistory.shared.clear()
+            historyCount = 0
         }
     }
 }

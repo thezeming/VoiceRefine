@@ -40,9 +40,17 @@ final class DictationPipeline {
     private let deepSeekProvider            = DeepSeekProvider()
 
     private var pendingContext: RefinementContext = .empty
+    /// Bundle ID of the frontmost app captured at `beginRecording()`. Stored
+    /// separately from `pendingContext` because `RefinementContext` carries
+    /// only the localized app name (for LLM use), not the bundle id (for
+    /// re-activation from retry / correct-last).
+    private var pendingBundleID: String? = nil
     private var hotkeyManager: HotkeyManager?
     private var maxDurationCutoff: DispatchWorkItem?
     private var currentTranscriptionTask: Task<Void, Never>?
+    /// True while a retry-only refinement run is in progress. Prevents the
+    /// hotkey path and retry path from colliding.
+    private var isRetrying: Bool = false
 
     private(set) var state: DictationState = .idle
 
@@ -94,6 +102,7 @@ final class DictationPipeline {
         // Snapshot context now — while the user's target app is still the
         // frontmost one. By release it usually still is, but capturing at
         // begin makes us robust against the user tabbing away mid-record.
+        pendingBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         pendingContext = ContextGatherer.gather()
         if !pendingContext.isEmpty {
             let beforeDesc: String
@@ -154,7 +163,9 @@ final class DictationPipeline {
 
         let (transcriptionProviderID, transcriptionProvider, transcriptionModel) = resolveTranscription()
         let context = pendingContext
+        let bundleID = pendingBundleID
         pendingContext = .empty
+        pendingBundleID = nil
 
         currentTranscriptionTask = Task { [weak self] in
             guard let self else { return }
@@ -170,16 +181,13 @@ final class DictationPipeline {
                 NSLog("VoiceRefine: refined transcript — \(refined)")
 
                 await MainActor.run {
-                    // Record the result before firing onTranscript so the
-                    // "Correct last…" window is populated immediately.
-                    let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-                    LastRefinementStore.shared.store(
-                        LastRefinementStore.Entry(
-                            raw: raw,
-                            refined: refined,
-                            context: context,
-                            frontmostAppBundleID: bundleID
-                        )
+                    // Record before firing onTranscript so "Correct last…"
+                    // / "Retry last" see the new entry immediately.
+                    TranscriptionHistory.shared.record(
+                        raw: raw,
+                        refined: refined,
+                        context: context,
+                        frontmostAppBundleID: bundleID
                     )
                     self.onTranscript?(refined)
                     if self.state == .processing {
@@ -190,6 +198,59 @@ final class DictationPipeline {
                 if Task.isCancelled { return }
                 NSLog("VoiceRefine: transcription error — \(error)")
                 await MainActor.run { self.flashError("Transcription failed.") }
+            }
+        }
+    }
+
+    // MARK: - Retry-last (refinement-only, no new recording)
+
+    /// Re-runs refinement on the most-recent raw transcript and pastes. The
+    /// caller should re-activate the target app first so the paste lands in
+    /// the right window.
+    ///
+    /// No-ops when a recording or retry is already in flight — never
+    /// double-dispatches. Must be called on the main actor.
+    @MainActor
+    func retryLastRefinement() {
+        guard state == .idle, !isRetrying else {
+            NSLog("VoiceRefine: retryLastRefinement ignored — busy (state=\(state), isRetrying=\(isRetrying))")
+            return
+        }
+        guard let entry = TranscriptionHistory.shared.mostRecent() else {
+            NSLog("VoiceRefine: retryLastRefinement ignored — history empty")
+            return
+        }
+
+        isRetrying = true
+        transition(to: .processing)
+
+        let raw = entry.raw
+        let context = entry.context ?? .empty
+        let bundleID = entry.frontmostAppBundleID
+
+        currentTranscriptionTask = Task { [weak self] in
+            guard let self else { return }
+            let refined = await self.refine(raw: raw, context: context)
+            if Task.isCancelled {
+                await MainActor.run {
+                    self.isRetrying = false
+                    self.transition(to: .idle)
+                }
+                return
+            }
+            NSLog("VoiceRefine: retry refined transcript — \(refined)")
+            await MainActor.run {
+                TranscriptionHistory.shared.record(
+                    raw: raw,
+                    refined: refined,
+                    context: context,
+                    frontmostAppBundleID: bundleID
+                )
+                self.onTranscript?(refined)
+                self.isRetrying = false
+                if self.state == .processing {
+                    self.transition(to: .idle)
+                }
             }
         }
     }

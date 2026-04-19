@@ -25,7 +25,7 @@ final class CorrectionWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         // Nothing extra needed — SwiftUI state resets on next open because
-        // CorrectionView reads from LastRefinementStore on appear.
+        // CorrectionView reads from TranscriptionHistory on appear.
     }
 }
 
@@ -69,7 +69,7 @@ private struct CorrectionView: View {
 
     private func loadFromStore() {
         // Must be called on MainActor; View body + onAppear are always on main.
-        if let entry = LastRefinementStore.shared.last {
+        if let entry = TranscriptionHistory.shared.mostRecent() {
             editedText = entry.refined
             originalRefined = entry.refined
             targetBundleID = entry.frontmostAppBundleID
