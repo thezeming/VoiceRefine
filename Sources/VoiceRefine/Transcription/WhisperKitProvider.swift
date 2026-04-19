@@ -43,14 +43,31 @@ final class WhisperKitProvider: TranscriptionProvider {
             .appendingPathComponent("whisper", isDirectory: true)
     }
 
+    /// Actual on-disk location WhisperKit nests a downloaded variant into.
+    /// The naive `<downloadBase>/<model>/` path was wrong — the real
+    /// layout is `<downloadBase>/models/argmaxinc/whisperkit-coreml/<model>/`
+    /// because WhisperKit mirrors the Hugging Face repo path under the
+    /// base. Every `isModelDownloaded` / `folderSizeBytes` caller goes
+    /// through this helper so there's one source of truth.
+    static func modelFolder(for model: String) -> URL {
+        downloadBaseURL
+            .appendingPathComponent("models", isDirectory: true)
+            .appendingPathComponent("argmaxinc", isDirectory: true)
+            .appendingPathComponent("whisperkit-coreml", isDirectory: true)
+            .appendingPathComponent(model, isDirectory: true)
+    }
+
     static func isModelDownloaded(_ model: String) -> Bool {
-        let folder = downloadBaseURL.appendingPathComponent(model, isDirectory: true)
+        let folder = modelFolder(for: model)
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDir), isDir.boolValue else {
             return false
         }
-        let contents = try? FileManager.default.contentsOfDirectory(atPath: folder.path)
-        return (contents?.count ?? 0) > 0
+        // Require at least one `.mlmodelc` bundle inside — a bare folder
+        // containing only `config.json` means the download was
+        // interrupted and the model can't load.
+        let contents = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        return contents.contains { $0.hasSuffix(".mlmodelc") }
     }
 
     /// Rough on-disk size (bytes) of each WhisperKit model we ship in the
@@ -102,7 +119,7 @@ final class WhisperKitProvider: TranscriptionProvider {
 
     /// Recursive byte-size of the model directory, or 0 if missing.
     private static func folderSizeBytes(for model: String) -> Int64 {
-        let folder = downloadBaseURL.appendingPathComponent(model, isDirectory: true)
+        let folder = modelFolder(for: model)
         guard let enumerator = FileManager.default.enumerator(
             at: folder,
             includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey]
