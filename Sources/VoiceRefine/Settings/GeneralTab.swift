@@ -1,8 +1,9 @@
 import SwiftUI
 
 struct GeneralTab: View {
-    @AppStorage(PrefKey.startAtLogin)        private var startAtLogin: Bool = false
-    @AppStorage(PrefKey.playStartStopSound)  private var playStartStopSound: Bool = false
+    @AppStorage(PrefKey.startAtLogin)           private var startAtLogin: Bool = false
+    @AppStorage(PrefKey.playStartStopSound)     private var playStartStopSound: Bool = false
+    @AppStorage(PrefKey.showRecordingIndicator) private var showRecordingIndicator: Bool = true
     @AppStorage(PrefKey.glossary)            private var glossary: String = ""
     @AppStorage(PrefKey.refinementSystemPrompt) private var systemPrompt: String = ""
 
@@ -59,6 +60,7 @@ struct GeneralTab: View {
                         }
                     }
                 Toggle("Play sound on record start/stop", isOn: $playStartStopSound)
+                Toggle("Show recording indicator", isOn: $showRecordingIndicator)
             }
 
             Section {

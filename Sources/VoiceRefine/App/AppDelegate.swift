@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pasteEngine: PasteEngine?
     private var accessibilityWindow: AccessibilityPermissionWindowController?
     private var onboardingWindow: OnboardingWindowController?
+    private var hudController: HUDWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -35,10 +36,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let paste = PasteEngine()
         self.pasteEngine = paste
 
+        let hud = HUDWindowController()
+        self.hudController = hud
+
         let pipeline = DictationPipeline()
         menuBar.setPipeline(pipeline)
-        pipeline.onStateChange = { [weak menuBar] state in
+        pipeline.onStateChange = { [weak menuBar, weak hud] state in
             menuBar?.apply(state)
+            switch state {
+            case .recording:
+                hud?.show()
+            default:
+                hud?.hide()
+            }
         }
         pipeline.onTranscript = { [weak paste] text in
             paste?.paste(text)
