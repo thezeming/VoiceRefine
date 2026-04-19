@@ -23,3 +23,6 @@ VoiceRefine.app/
 ## Env / secrets
 .env
 .env.*
+
+## Claude Code personal overrides (permissions, env) — never commit
+.claude/settings.local.json
