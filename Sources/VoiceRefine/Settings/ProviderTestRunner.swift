@@ -20,6 +20,15 @@ enum TranscriptionProviderFactory {
     static func make(_ id: TranscriptionProviderID) -> any TranscriptionProvider {
         switch id {
         case .whisperKit:     return WhisperKitProvider()
+        case .appleSpeech:
+            // Gated: on macOS <26 the class doesn't exist. The picker hides
+            // this case via `visibleCases`, but if a stale preference
+            // selects it we fall back to WhisperKit so the pipeline still
+            // runs instead of trapping.
+            if #available(macOS 26, *) {
+                return AppleSpeechProvider()
+            }
+            return WhisperKitProvider()
         case .groq:           return GroqWhisperProvider()
         case .openAIWhisper:  return OpenAIWhisperProvider()
         }

@@ -21,6 +21,16 @@ final class DictationPipeline {
     private let whisperKitProvider     = WhisperKitProvider()
     private let openAIWhisperProvider  = OpenAIWhisperProvider()
     private let groqWhisperProvider    = GroqWhisperProvider()
+    /// Apple SpeechAnalyzer requires macOS 26. Built lazily so pre-Tahoe
+    /// machines never even try to instantiate the class (the symbol itself
+    /// doesn't exist there). Stays nil when unavailable; the resolver
+    /// falls back to WhisperKit in that case.
+    private lazy var appleSpeechProvider: (any TranscriptionProvider)? = {
+        if #available(macOS 26, *) {
+            return AppleSpeechProvider()
+        }
+        return nil
+    }()
     // Refinement backends
     private let ollamaProvider              = OllamaProvider()
     private let noOpProvider                = NoOpProvider()
@@ -222,6 +232,7 @@ final class DictationPipeline {
         let provider: any TranscriptionProvider
         switch id {
         case .whisperKit:    provider = whisperKitProvider
+        case .appleSpeech:   provider = appleSpeechProvider ?? whisperKitProvider
         case .openAIWhisper: provider = openAIWhisperProvider
         case .groq:          provider = groqWhisperProvider
         }

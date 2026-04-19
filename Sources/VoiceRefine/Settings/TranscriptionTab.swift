@@ -12,7 +12,7 @@ struct TranscriptionTab: View {
         Form {
             Section("Provider") {
                 Picker("Provider", selection: $providerRaw) {
-                    ForEach(TranscriptionProviderID.allCases) { p in
+                    ForEach(TranscriptionProviderID.visibleCases) { p in
                         Text(p.displayName).tag(p.rawValue)
                     }
                 }
