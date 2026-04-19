@@ -87,12 +87,25 @@ final class AppleSpeechProvider: TranscriptionProvider, @unchecked Sendable {
         // when `finalizeAndFinishThroughEndOfInput` closes the stream, or
         // early if the outer pipeline cancels us (new hotkey press while
         // this one is still transcribing — PLAN invariant #9).
+        //
+        // Each final covers a freshly-committed audio segment (often a
+        // single utterance delimited by a natural pause), so the loop
+        // joins them with a single space rather than bare concatenation
+        // — otherwise two pause-separated clauses come back glued as
+        // "clause oneclause two".
         let collectTask = Task { () -> String in
             var out = ""
             do {
                 for try await result in transcriber.results where result.isFinal {
                     try Task.checkCancellation()
-                    out += String(result.text.characters)
+                    let segment = String(result.text.characters)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !segment.isEmpty else { continue }
+                    if out.isEmpty {
+                        out = segment
+                    } else {
+                        out += " " + segment
+                    }
                 }
             } catch is CancellationError {
                 return out
@@ -159,10 +172,21 @@ final class AppleSpeechProvider: TranscriptionProvider, @unchecked Sendable {
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
 
-        // Drain results on a child Task, emitting every partial and
-        // accumulating the final string.
+        // Drain results on a child Task, accumulating every final into
+        // `committed` and showing `committed + current partial` through
+        // `onPartial` so the HUD tracks the full transcript as it grows.
+        //
+        // SpeechTranscriber emits ONE final per committed utterance, not
+        // one for the whole recording. Whenever the user pauses between
+        // clauses (a natural rhythm during longer dictations) each
+        // clause lands as its own final. The earlier implementation
+        // did `lastFinal = text`, which kept only the last utterance
+        // and silently dropped everything before it — long sentences
+        // came back as just their tail. We now append each final with
+        // a single-space separator; the existing trim at the return
+        // site strips the leading/trailing whitespace from the join.
         let collectTask = Task { () -> String in
-            var lastFinal = ""
+            var committed = ""
             do {
                 for try await result in transcriber.results {
                     try Task.checkCancellation()
@@ -174,15 +198,27 @@ final class AppleSpeechProvider: TranscriptionProvider, @unchecked Sendable {
                         .filter { !$0.isEmpty }
                         .joined(separator: " ")
                     guard !text.isEmpty else { continue }
-                    onPartial(text)
+
                     if result.isFinal {
-                        lastFinal = text
+                        if committed.isEmpty {
+                            committed = text
+                        } else {
+                            committed += " " + text
+                        }
+                        onPartial(committed)
+                    } else {
+                        // Partial: show whatever has been committed so
+                        // far plus the current evolving hypothesis.
+                        let display = committed.isEmpty
+                            ? text
+                            : committed + " " + text
+                        onPartial(display)
                     }
                 }
             } catch is CancellationError {
-                return lastFinal
+                return committed
             }
-            return lastFinal
+            return committed
         }
 
         do {
