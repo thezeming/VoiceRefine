@@ -18,7 +18,7 @@ struct TranscriptionTab: View {
                 }
             }
 
-            Section("Model") {
+            Section(provider == .appleSpeech ? "Locale" : "Model") {
                 TranscriptionModelPicker(provider: provider)
                 if provider == .whisperKit {
                     HStack {
@@ -31,6 +31,9 @@ struct TranscriptionTab: View {
                             .disabled(true)
                     }
                     .font(.callout)
+                }
+                if provider == .appleSpeech, #available(macOS 26, *) {
+                    AppleSpeechLocaleRow()
                 }
             }
 
