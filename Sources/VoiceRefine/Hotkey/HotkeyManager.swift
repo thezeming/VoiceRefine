@@ -11,22 +11,24 @@ extension Notification.Name {
 
 /// The set of hotkey gestures the user can choose from. Stored as a String
 /// in `PrefKey.hotkeyGesture` so it round-trips through UserDefaults.
+///
+/// Only two options by design — the broader set (double-tap-Option,
+/// hold-⌃⌥⌘, hold-Fn) was tried first but added picker friction without
+/// clear win. Stored prefs from those legacy values fall back to
+/// `.doubleTapShift` via `init?(rawValue:)` returning nil.
 enum HotkeyGesture: String, CaseIterable {
     /// Double-tap Shift and hold (the original / default gesture).
-    case doubleTapShift   = "doubleTapShift"
-    /// Double-tap Option and hold (same timing as Shift variant).
-    case doubleTapOption  = "doubleTapOption"
-    /// Hold Control + Option + Command simultaneously — no tap timing.
-    case holdControlOptionCommand = "holdControlOptionCommand"
-    /// Hold the Fn key — simple press/release.
-    case fnKey            = "fnKey"
+    case doubleTapShift = "doubleTapShift"
+    /// Hold the Option key — simple press/release. No double-tap, no
+    /// hold-confirm. Option alone doesn't type characters (Option+letter
+    /// does, which cancels the gesture as a chord), so the hold-confirm
+    /// threshold needed for Shift isn't required here.
+    case holdOption     = "holdOption"
 
     var displayName: String {
         switch self {
-        case .doubleTapShift:          return "Double-tap \u{21E7} Shift and hold"
-        case .doubleTapOption:         return "Double-tap \u{2325} Option and hold"
-        case .holdControlOptionCommand: return "Hold \u{2303} Control + \u{2325} Option + \u{2318} Command"
-        case .fnKey:                   return "Hold Fn"
+        case .doubleTapShift: return "Double-tap \u{21E7} Shift and hold"
+        case .holdOption:     return "Hold \u{2325} Option"
         }
     }
 }
@@ -91,8 +93,15 @@ final class HotkeyManager {
         self.onPress = onPress
         self.onRelease = onRelease
 
+        // Resolve + migrate any legacy gesture (e.g. an older build's
+        // .fnKey or .holdControlOptionCommand) to the current default
+        // so the Settings picker doesn't end up displaying nothing.
         let raw = UserDefaults.standard.string(forKey: PrefKey.hotkeyGesture) ?? ""
-        gesture = HotkeyGesture(rawValue: raw) ?? .doubleTapShift
+        let resolved = HotkeyGesture(rawValue: raw) ?? .doubleTapShift
+        gesture = resolved
+        if raw != resolved.rawValue {
+            UserDefaults.standard.set(resolved.rawValue, forKey: PrefKey.hotkeyGesture)
+        }
 
         reload()
 
@@ -154,10 +163,10 @@ final class HotkeyManager {
 
         // Deliver clean release if we were mid-hold.
         switch gesture {
-        case .doubleTapShift, .doubleTapOption:
+        case .doubleTapShift:
             if case .holding = doubleTapState { onRelease() }
             doubleTapState = .idle
-        case .holdControlOptionCommand, .fnKey:
+        case .holdOption:
             if holdActive { onRelease() }
             holdActive = false
         }
@@ -170,12 +179,8 @@ final class HotkeyManager {
         switch gesture {
         case .doubleTapShift:
             handleDoubleTap(event, modifier: .shift)
-        case .doubleTapOption:
-            handleDoubleTap(event, modifier: .option)
-        case .holdControlOptionCommand:
-            handleHoldControlOptionCommand(event)
-        case .fnKey:
-            handleFnKey(event)
+        case .holdOption:
+            handleHoldOption(event)
         }
     }
 
@@ -275,52 +280,20 @@ final class HotkeyManager {
         holdConfirmWorkItem = nil
     }
 
-    // MARK: - Hold Control + Option + Command
+    // MARK: - Hold Option
 
-    /// Fires `onPress` when ⌃⌥⌘ all go true simultaneously (first event
-    /// where all three are set). Fires `onRelease` on the first event where
-    /// any one of the three is released. Shift must not be present.
-    private func handleHoldControlOptionCommand(_ event: NSEvent) {
+    /// Fires `onPress` when Option goes true alone, `onRelease` when it
+    /// goes false (or any other modifier appears, turning it into a
+    /// chord like ⌥⌘). Pure boolean — no double-tap, no hold-confirm.
+    private func handleHoldOption(_ event: NSEvent) {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         defer { previousFlags = flags }
+        let optionOnly = flags == .option
 
-        let required: NSEvent.ModifierFlags = [.control, .option, .command]
-        let allHeld = flags.isSuperset(of: required) && !flags.contains(.shift)
-
-        if !holdActive && allHeld {
+        if !holdActive && optionOnly {
             holdActive = true
             onPress()
-        } else if holdActive && !allHeld {
-            holdActive = false
-            onRelease()
-        }
-    }
-
-    // MARK: - Fn key hold
-
-    /// Fires `onPress` on Fn-down, `onRelease` on Fn-up. Fires only when
-    /// Fn is the **sole** modifier — Fn+anything else cancels.
-    ///
-    /// Bug-fix history: `.function` IS in `.deviceIndependentFlagsMask`
-    /// (bit 0x00800000), so the previous "purelyFn = diFlags.isEmpty"
-    /// check evaluated to false even when only Fn was held — onPress
-    /// never fired. The fix subtracts `.function` before the empty
-    /// check.
-    private func handleFnKey(_ event: NSEvent) {
-        let rawFlags  = event.modifierFlags
-        let fnDown    = rawFlags.contains(.function)
-        // Strip Fn out before checking that no other modifier is held.
-        let otherMods = rawFlags
-            .intersection(.deviceIndependentFlagsMask)
-            .subtracting(.function)
-        let purelyFn  = otherMods.isEmpty
-
-        defer { previousFlags = rawFlags.intersection(.deviceIndependentFlagsMask) }
-
-        if !holdActive && fnDown && purelyFn {
-            holdActive = true
-            onPress()
-        } else if holdActive && (!fnDown || !purelyFn) {
+        } else if holdActive && !optionOnly {
             holdActive = false
             onRelease()
         }

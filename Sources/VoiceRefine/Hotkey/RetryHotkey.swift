@@ -1,14 +1,13 @@
 import AppKit
 
-/// Global ⌃⌘R chord for "Retry last refinement". Independent of the
-/// push-to-talk gesture so it never interferes with normal dictation.
+/// Global ⌘R chord for "Retry last refinement".
 ///
-/// Why not configurable: a single fixed chord keeps the implementation
-/// trivial — the moment we make it user-configurable we'll need a UI like
-/// the gesture picker. ⌃⌘R is rarely used by other apps (most apps use
-/// just ⌘R for "reload") and only fires when held with both ⌃ and ⌘ at
-/// the same time, so accidental triggers during normal typing are
-/// effectively impossible.
+/// Caveat: ⌘R is widely used (browser reload, IDE run/refactor, Slack
+/// reactions, Finder…). Because the local monitor returns the event
+/// (we never swallow keystrokes), the host app still receives ⌘R AND we
+/// also fire retry. Whenever the user presses ⌘R in *any* app, retry
+/// will run if there's a previous transcription in history. Switch to a
+/// less-conflicting chord (e.g. ⌃⌘R) here if that becomes a problem.
 @MainActor
 final class RetryHotkey {
     private let onTrigger: @MainActor () -> Void
@@ -45,9 +44,9 @@ final class RetryHotkey {
     private func handle(_ event: NSEvent) {
         guard event.keyCode == Self.rKeyCode else { return }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let required: NSEvent.ModifierFlags = [.control, .command]
-        // Exact-match: ⌃⌘ only — no shift, option, capslock, function.
-        guard flags == required else { return }
+        // Exact-match: ⌘ only — no shift, control, option, capslock, function.
+        // Picky on purpose so a stray ⌘⇧R (e.g. browser hard-reload) doesn't fire.
+        guard flags == .command else { return }
         onTrigger()
     }
 }
