@@ -13,6 +13,7 @@ import AppKit
 /// All public methods must be called on the main thread. The window is gated
 /// by `PrefKey.showRecordingIndicator`; when that pref is false, all three
 /// methods are no-ops.
+@MainActor
 final class HUDWindowController {
 
     // MARK: - Constants

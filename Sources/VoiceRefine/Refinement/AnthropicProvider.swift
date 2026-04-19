@@ -4,12 +4,8 @@ import Foundation
 /// OpenAI-style Bearer header, and wraps responses as an array of
 /// content blocks — enough API divergence that it doesn't share the
 /// OpenAI-compat client.
-<<<<<<< HEAD
-final class AnthropicProvider: RefinementProvider, APIKeyed {
-=======
-final class AnthropicProvider: RefinementProvider, @unchecked Sendable {
+final class AnthropicProvider: RefinementProvider, APIKeyed, @unchecked Sendable {
     // @unchecked Sendable: holds only let URLSession; all methods are async.
->>>>>>> 253aabd (refactor(swift6): migrate to swift-tools-version 6.0 with strict concurrency)
     static let providerID = RefinementProviderID.anthropic
     static let apiKeyAccount = RefinementProviderID.anthropic.apiKeyAccount ?? ""
     static var missingAPIKeyError: any Error { ProviderError.missingAPIKey }

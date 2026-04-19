@@ -4,12 +4,8 @@ import Foundation
 /// base URL; otherwise indistinguishable from `OpenAIProvider` — both
 /// route through `OpenAICompatClient`. Pulled in as a cost-effective
 /// cloud alternative to Anthropic / OpenAI.
-<<<<<<< HEAD
-final class DeepSeekProvider: RefinementProvider, APIKeyed {
-=======
-final class DeepSeekProvider: RefinementProvider, @unchecked Sendable {
+final class DeepSeekProvider: RefinementProvider, APIKeyed, @unchecked Sendable {
     // @unchecked Sendable: no stored mutable state; all methods are async.
->>>>>>> 253aabd (refactor(swift6): migrate to swift-tools-version 6.0 with strict concurrency)
     static let providerID = RefinementProviderID.deepseek
     static let apiKeyAccount = RefinementProviderID.deepseek.apiKeyAccount ?? ""
     static var missingAPIKeyError: any Error { ProviderError.missingAPIKey }

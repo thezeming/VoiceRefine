@@ -1,11 +1,7 @@
 import Foundation
 
-<<<<<<< HEAD
-final class OpenAIWhisperProvider: TranscriptionProvider, APIKeyed {
-=======
-final class OpenAIWhisperProvider: TranscriptionProvider, @unchecked Sendable {
+final class OpenAIWhisperProvider: TranscriptionProvider, APIKeyed, @unchecked Sendable {
     // @unchecked Sendable: holds only let URLSession; all methods are async.
->>>>>>> 253aabd (refactor(swift6): migrate to swift-tools-version 6.0 with strict concurrency)
     static let providerID = TranscriptionProviderID.openAIWhisper
     static let apiKeyAccount = TranscriptionProviderID.openAIWhisper.apiKeyAccount ?? ""
     static var missingAPIKeyError: any Error { ProviderError.missingAPIKey }

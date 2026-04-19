@@ -56,6 +56,9 @@ final class DictationPipeline {
     /// `onPartialTranscript`. Only accessed on the main thread.
     private var partialLastEmit: Date = .distantPast
 
+    var onStateChange: (@MainActor (DictationState) -> Void)?
+    /// Fires with the final (refined) transcript once the full pipeline
+    /// completes. Phase 5 hooks the paste engine here.
     var onTranscript: (@MainActor (String) -> Void)?
     /// Fires with live partial transcripts during Apple Speech streaming.
     /// Always called on the main thread. Throttled to ~5 Hz (200 ms minimum

@@ -16,7 +16,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     // MARK: - Processing pulse
 
-    private var pulseTimer: Timer?
+    // nonisolated(unsafe): touched only on main (start/stop/advance run on
+    // MainActor; deinit is nonisolated but releases occur via the @MainActor
+    // AppDelegate setting menuBarController = nil on quit).
+    nonisolated(unsafe) private var pulseTimer: Timer?
     private var pulsePhase: Int = 0
     private static let pulseSymbols = ["waveform", "waveform.path", "waveform.path.badge.plus"]
 
@@ -75,7 +78,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         pulsePhase = 0
         advancePulse()
         let timer = Timer(timeInterval: 0.6, repeats: true) { [weak self] _ in
-            self?.advancePulse()
+            // Timer fires on RunLoop.main → safe to assume MainActor isolation.
+            MainActor.assumeIsolated { self?.advancePulse() }
         }
         RunLoop.main.add(timer, forMode: .common)
         pulseTimer = timer
