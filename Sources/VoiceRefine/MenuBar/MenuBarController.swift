@@ -23,6 +23,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         pulseTimer?.invalidate()
     }
 
+    // Menu item tag constants
+    private enum Tag {
+        static let reEnableRefinement = 100
+    }
+
     init(onShowSettings: @escaping () -> Void,
          onShowOnboarding: @escaping () -> Void,
          onShowCorrection: @escaping () -> Void,
@@ -148,6 +153,18 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
 
+        let reEnableItem = NSMenuItem(
+            title: "Re-enable refinement",
+            action: #selector(reEnableRefinement),
+            keyEquivalent: ""
+        )
+        reEnableItem.target = self
+        reEnableItem.tag = Tag.reEnableRefinement
+        reEnableItem.isEnabled = false   // starts disabled; menuWillOpen toggles it
+        menu.addItem(reEnableItem)
+
+        menu.addItem(.separator())
+
         let quitItem = NSMenuItem(
             title: "Quit VoiceRefine",
             action: #selector(NSApplication.terminate(_:)),
@@ -167,6 +184,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         correctLastItem?.isEnabled = hasHistory
         let pipelineIdle = pipeline.map { $0.state == .idle } ?? false
         retryLastItem?.isEnabled = hasHistory && pipelineIdle
+        if let item = menu.item(withTag: Tag.reEnableRefinement) {
+            item.isEnabled = pipeline?.hasRefinementOverride ?? false
+        }
     }
 
     // MARK: - Actions
@@ -199,6 +219,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         // pipeline posts ⌘V.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             self?.pipeline?.retryLastRefinement()
+        }
+    }
+
+    @objc private func reEnableRefinement() {
+        Task { @MainActor in
+            pipeline?.resetRefinementOverride()
         }
     }
 }

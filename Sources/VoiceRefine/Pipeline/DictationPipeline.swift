@@ -53,6 +53,12 @@ final class DictationPipeline {
     /// hotkey path and retry path from colliding.
     private var isRetrying: Bool = false
 
+    private var refinementFailureCounts: [RefinementProviderID: Int] = [:]
+    /// When non-nil, `resolveRefinement` returns the NoOp provider instead of
+    /// the user-selected one. Set automatically after 2 consecutive failures
+    /// for the same provider; cleared by `resetRefinementOverride()`.
+    private var refinementOverride: RefinementProviderID? = nil
+
     private(set) var state: DictationState = .idle
 
     var onStateChange: ((DictationState) -> Void)?
@@ -268,7 +274,18 @@ final class DictationPipeline {
     ///     When a match is found, it replaces the global system prompt only —
     ///     all other pipeline protections (sanitizer, leak guard, stop
     ///     sequences) are unaffected.
+    ///
+    /// After 2 consecutive errors for the same user-selected provider the
+    /// pipeline auto-switches to NoOp for the rest of the session. The user
+    /// can reset this via "Re-enable refinement" in the menu bar.
     private func refine(raw: String, context: RefinementContext, bundleID: String?) async -> String {
+        // Capture the user-selected ID BEFORE resolveRefinement() so that
+        // failure counters and notifications always name the real provider,
+        // not NoOp (which resolveRefinement returns when the override is set).
+        let selectedID = RefinementProviderID(
+            rawValue: UserDefaults.standard.string(forKey: PrefKey.selectedRefinementProvider) ?? ""
+        ) ?? .ollama
+
         let (providerID, provider) = resolveRefinement()
 
         // Resolve system prompt: per-app override wins if present, otherwise
@@ -300,13 +317,39 @@ final class DictationPipeline {
                 )
                 return raw
             }
+
+            // Success — reset failure counter for the user-selected provider.
+            await MainActor.run { refinementFailureCounts[selectedID] = 0 }
             return out
         } catch {
-            NSLog("VoiceRefine: refinement via \(providerID.rawValue) failed (\(error)); falling back to raw")
-            NotificationDispatcher.postError(
-                title: "\(providerID.displayName) refinement unavailable",
-                message: "Pasted raw transcript instead. \(String(describing: error))"
-            )
+            NSLog("VoiceRefine: refinement via \(selectedID.rawValue) failed (\(error)); falling back to raw")
+
+            let shouldPostSessionNotification: Bool = await MainActor.run {
+                refinementFailureCounts[selectedID, default: 0] += 1
+                let count = refinementFailureCounts[selectedID]!
+
+                if count >= 2 && refinementOverride == nil {
+                    // Auto-switch to NoOp for the rest of this session.
+                    refinementOverride = .noOp
+                    NSLog("VoiceRefine: 2 consecutive \(selectedID.rawValue) failures — switching to NoOp for this session")
+                    return true  // caller posts the session-level notification only
+                }
+                return false
+            }
+
+            if shouldPostSessionNotification {
+                // ONE session-level toast: explains the auto-switch.
+                NotificationDispatcher.postError(
+                    title: "Refinement disabled for this session",
+                    message: "\(selectedID.displayName) failed twice — switched to raw-transcript mode. Choose \"Re-enable refinement\" from the menu once it's fixed."
+                )
+            } else {
+                // Per-failure toast (only fires on the first failure).
+                NotificationDispatcher.postError(
+                    title: "\(selectedID.displayName) refinement unavailable",
+                    message: "Pasted raw transcript instead. \(String(describing: error))"
+                )
+            }
             return raw
         }
     }
@@ -331,12 +374,18 @@ final class DictationPipeline {
     }
 
     private func resolveRefinement() -> (RefinementProviderID, any RefinementProvider) {
-        let id = RefinementProviderID(
+        let selectedID = RefinementProviderID(
             rawValue: UserDefaults.standard.string(forKey: PrefKey.selectedRefinementProvider) ?? ""
         ) ?? .ollama
 
+        // When an override is active (after repeated failures), return NoOp
+        // regardless of the user-selected provider.
+        if refinementOverride != nil {
+            return (.noOp, noOpProvider)
+        }
+
         let provider: any RefinementProvider
-        switch id {
+        switch selectedID {
         case .ollama:           provider = ollamaProvider
         case .noOp:             provider = noOpProvider
         case .openAICompatible: provider = openAICompatibleProvider
@@ -344,8 +393,20 @@ final class DictationPipeline {
         case .openAI:           provider = openAIProvider
         case .deepseek:         provider = deepSeekProvider
         }
-        return (id, provider)
+        return (selectedID, provider)
     }
+
+    // MARK: - Refinement override (auto-fallback after repeated failures)
+
+    @MainActor
+    func resetRefinementOverride() {
+        refinementOverride = nil
+        refinementFailureCounts.removeAll()
+        NSLog("VoiceRefine: refinement override cleared — user-selected provider re-enabled")
+    }
+
+    @MainActor
+    var hasRefinementOverride: Bool { refinementOverride != nil }
 
     private func flashError(_ message: String) {
         transition(to: .error(message))
