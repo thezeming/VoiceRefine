@@ -37,6 +37,11 @@ final class CorrectionWindowController: NSWindowController, NSWindowDelegate {
                 dismiss: { [weak self] in self?.window?.close() }
             )
             window.contentViewController = NSHostingController(rootView: view)
+            // NSHostingController propagates the SwiftUI view's intrinsic
+            // size to preferredContentSize, which shrinks the window to a
+            // tiny "just fits the buttons" rectangle. Force the size back
+            // to the design dimensions after every swap.
+            window.setContentSize(NSSize(width: 560, height: 280))
         }
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)

@@ -33,9 +33,13 @@ final class PasteEngine {
         if let n = replacingPreviousLength, n > 0 {
             Self.synthesizeBackspaces(count: n)
             // Brief gap so the target app finishes processing all the
-            // delete events before ⌘V races in.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-                self?.pasteImpl(text)
+            // delete events before ⌘V races in. Strong self capture is
+            // required — short-lived call sites (e.g. CorrectLast.save())
+            // construct a fresh PasteEngine and discard it immediately, so
+            // a `[weak self]` closure would fire with nil and the ⌘V would
+            // never land.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [self] in
+                pasteImpl(text)
             }
         } else {
             pasteImpl(text)
