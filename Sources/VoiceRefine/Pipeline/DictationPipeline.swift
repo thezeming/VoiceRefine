@@ -17,27 +17,11 @@ final class DictationPipeline {
     static let maxDuration: TimeInterval = 120.0
 
     private let recorder = AudioRecorder()
-    // Transcription backends
-    private let whisperKitProvider     = WhisperKitProvider()
-    private let openAIWhisperProvider  = OpenAIWhisperProvider()
-    private let groqWhisperProvider    = GroqWhisperProvider()
-    /// Apple SpeechAnalyzer requires macOS 26. Built lazily so pre-Tahoe
-    /// machines never even try to instantiate the class (the symbol itself
-    /// doesn't exist there). Stays nil when unavailable; the resolver
-    /// falls back to WhisperKit in that case.
-    private lazy var appleSpeechProvider: (any TranscriptionProvider)? = {
-        if #available(macOS 26, *) {
-            return AppleSpeechProvider()
-        }
-        return nil
-    }()
-    // Refinement backends
-    private let ollamaProvider              = OllamaProvider()
-    private let noOpProvider                = NoOpProvider()
-    private let openAICompatibleProvider    = OpenAICompatibleProvider()
-    private let anthropicProvider           = AnthropicProvider()
-    private let openAIProvider              = OpenAIProvider()
-    private let deepSeekProvider            = DeepSeekProvider()
+    /// Factories decouple the pipeline from concrete provider constructors
+    /// so tests can swap in stubs. Providers are lazily instantiated and
+    /// memoized inside the factory — WhisperKit's init stays one-shot.
+    private let transcriptionFactory: TranscriptionFactory
+    private let refinementFactory: RefinementFactory
 
     private var pendingContext: RefinementContext = .empty
     /// Bundle ID of the frontmost app captured at `beginRecording()`. Stored
@@ -65,6 +49,20 @@ final class DictationPipeline {
     /// Fires with the final (refined) transcript once the full pipeline
     /// completes. Phase 5 hooks the paste engine here.
     var onTranscript: ((String) -> Void)?
+
+    // MARK: - Init
+
+    init(transcriptionFactory: TranscriptionFactory, refinementFactory: RefinementFactory) {
+        self.transcriptionFactory = transcriptionFactory
+        self.refinementFactory = refinementFactory
+    }
+
+    convenience init() {
+        self.init(
+            transcriptionFactory: DefaultTranscriptionFactory(),
+            refinementFactory: DefaultRefinementFactory()
+        )
+    }
 
     // MARK: - Lifecycle
 
@@ -360,17 +358,8 @@ final class DictationPipeline {
         let id = TranscriptionProviderID(
             rawValue: UserDefaults.standard.string(forKey: PrefKey.selectedTranscriptionProvider) ?? ""
         ) ?? .whisperKit
-
         let model = UserDefaults.standard.string(forKey: id.modelPreferenceKey) ?? id.defaultModel
-
-        let provider: any TranscriptionProvider
-        switch id {
-        case .whisperKit:    provider = whisperKitProvider
-        case .appleSpeech:   provider = appleSpeechProvider ?? whisperKitProvider
-        case .openAIWhisper: provider = openAIWhisperProvider
-        case .groq:          provider = groqWhisperProvider
-        }
-        return (id, provider, model)
+        return (id, transcriptionFactory.provider(for: id), model)
     }
 
     private func resolveRefinement() -> (RefinementProviderID, any RefinementProvider) {
@@ -381,19 +370,9 @@ final class DictationPipeline {
         // When an override is active (after repeated failures), return NoOp
         // regardless of the user-selected provider.
         if refinementOverride != nil {
-            return (.noOp, noOpProvider)
+            return (.noOp, refinementFactory.provider(for: .noOp))
         }
-
-        let provider: any RefinementProvider
-        switch selectedID {
-        case .ollama:           provider = ollamaProvider
-        case .noOp:             provider = noOpProvider
-        case .openAICompatible: provider = openAICompatibleProvider
-        case .anthropic:        provider = anthropicProvider
-        case .openAI:           provider = openAIProvider
-        case .deepseek:         provider = deepSeekProvider
-        }
-        return (selectedID, provider)
+        return (selectedID, refinementFactory.provider(for: selectedID))
     }
 
     // MARK: - Refinement override (auto-fallback after repeated failures)
