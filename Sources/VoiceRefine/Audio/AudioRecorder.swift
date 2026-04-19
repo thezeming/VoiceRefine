@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 import os
 
@@ -103,13 +103,18 @@ final class AudioRecorder {
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 256
         guard let outBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else { return }
 
-        var consumed = false
+        // AVAudioConverterInputBlock is called synchronously and once by the
+        // converter, but Swift 6 still requires captured mutable state to be
+        // thread-safe. Use a reference-type box so mutation is safe across
+        // the @Sendable closure boundary.
+        final class Box<T>: @unchecked Sendable { var value: T; init(_ v: T) { value = v } }
+        let consumed = Box(false)
         let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
-            if consumed {
+            if consumed.value {
                 outStatus.pointee = .noDataNow
                 return nil
             }
-            consumed = true
+            consumed.value = true
             outStatus.pointee = .haveData
             return buffer
         }

@@ -1,5 +1,6 @@
 import AppKit
 
+@MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
     private let statusItem: NSStatusItem
     private let onShowSettings: () -> Void

@@ -53,7 +53,12 @@ struct RotatingLogFile {
         try? fm.moveItem(at: url, to: backup)
     }
 
-    private static let dateFormatter: ISO8601DateFormatter = {
+    // reason: ISO8601DateFormatter is not Sendable, but the instance is
+    // created once, never mutated after init, and only called from append()
+    // which is already guarded by the caller's write serialisation via
+    // the file-system. The formatter itself has no mutable state after
+    // formatOptions is set.
+    nonisolated(unsafe) private static let dateFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f

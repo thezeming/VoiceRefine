@@ -10,7 +10,9 @@ enum OllamaState: Equatable {
 /// and can pull a model. Uses the native `/api/...` endpoints (not the
 /// OpenAI-compat `/v1/...`) because only the native API exposes tags /
 /// pull.
-final class OllamaDetector {
+final class OllamaDetector: @unchecked Sendable {
+    // @unchecked Sendable: holds only a let URLSession; all methods are
+    // async and stateless between calls — no mutable instance state.
     static let shared = OllamaDetector()
 
     private let session: URLSession

@@ -5,7 +5,11 @@ import WhisperKit
 /// `~/Library/Application Support/VoiceRefine/models/whisper/<variant>/`
 /// and reused afterwards — satisfying PLAN's "no network after the initial
 /// model download" invariant.
-final class WhisperKitProvider: TranscriptionProvider {
+final class WhisperKitProvider: TranscriptionProvider, @unchecked Sendable {
+    // @unchecked Sendable: `whisperKit` and `loadedModel` are only mutated
+    // inside `ensureLoaded`, which is called sequentially from transcribe()
+    // — always from one Task at a time via DictationPipeline's serial task
+    // cancellation pattern. No concurrent mutation in practice.
     static let providerID = TranscriptionProviderID.whisperKit
 
     enum ProviderError: Error, CustomStringConvertible {

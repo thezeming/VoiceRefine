@@ -5,7 +5,8 @@ import Foundation
 /// base URL from `baseURLPreferenceKey` and an optional API key from
 /// Keychain. Missing key is fine — some self-hosted endpoints don't
 /// require auth.
-final class OpenAICompatibleProvider: RefinementProvider {
+final class OpenAICompatibleProvider: RefinementProvider, @unchecked Sendable {
+    // @unchecked Sendable: no stored mutable state; all methods are async.
     static let providerID = RefinementProviderID.openAICompatible
 
     enum ProviderError: CloudProviderError {

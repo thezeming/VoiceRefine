@@ -8,7 +8,12 @@ import Foundation
 /// `audio` is little-endian 16 kHz mono Int16 PCM — exactly what
 /// `AudioRecorder` emits. Concrete providers convert to whatever shape their
 /// SDK wants (Whisper wants `[Float]`, HTTP providers want WAV bytes).
-protocol TranscriptionProvider: AnyObject {
+///
+/// `Sendable` conformance is required so `any TranscriptionProvider` values
+/// can cross actor boundaries into the pipeline's Task without data-race
+/// warnings. Concrete implementations either hold only `let` fields
+/// (pure value semantics) or use locks internally.
+protocol TranscriptionProvider: AnyObject, Sendable {
     static var providerID: TranscriptionProviderID { get }
     func transcribe(audio: Data, model: String) async throws -> String
 

@@ -1,5 +1,6 @@
 import AppKit
 
+@MainActor
 enum MainMenuBuilder {
     /// LSUIElement apps don't render a menu bar, but shortcuts like ⌘V are still
     /// dispatched through `NSApp.mainMenu`. Without this menu, `SecureField`

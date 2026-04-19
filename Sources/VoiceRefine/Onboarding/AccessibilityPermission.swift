@@ -1,5 +1,5 @@
 import AppKit
-import ApplicationServices
+@preconcurrency import ApplicationServices
 
 enum AccessibilityPermission {
     static var isTrusted: Bool {
@@ -9,6 +9,10 @@ enum AccessibilityPermission {
     /// Runs the system prompt asking the user to add VoiceRefine to the
     /// Accessibility list. Returns current trust state. Mostly useful as a
     /// nudge — the user still has to flip the toggle in System Settings.
+    ///
+    /// `@MainActor` because `kAXTrustedCheckOptionPrompt` is a C global
+    /// var — the compiler treats it as potentially-mutable shared state.
+    @MainActor
     @discardableResult
     static func promptAndCheck() -> Bool {
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String

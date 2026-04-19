@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 import Speech
 
@@ -12,7 +12,9 @@ import Speech
 /// compatible on the current machine — hard-coding a format crashed deep
 /// inside the Speech framework on first test.
 @available(macOS 26, *)
-final class AppleSpeechProvider: TranscriptionProvider {
+final class AppleSpeechProvider: TranscriptionProvider, @unchecked Sendable {
+    // @unchecked Sendable: stateless — no instance stored properties; all
+    // work is done inside the async transcribe() method.
     static let providerID = TranscriptionProviderID.appleSpeech
 
     enum ProviderError: Error, CustomStringConvertible {
@@ -260,14 +262,18 @@ final class AppleSpeechProvider: TranscriptionProvider {
             throw ProviderError.bufferConversionFailed("could not allocate target PCM buffer")
         }
 
+        // AVAudioConverterInputBlock is @Sendable in Swift 6. Use a
+        // reference-type box so the single-use bool can be mutated safely
+        // across the closure boundary (the block is called synchronously).
+        final class Box<T>: @unchecked Sendable { var value: T; init(_ v: T) { value = v } }
         var error: NSError?
-        var provided = false
+        let provided = Box(false)
         let status = converter.convert(to: targetBuffer, error: &error) { _, outStatus in
-            if provided {
+            if provided.value {
                 outStatus.pointee = .endOfStream
                 return nil
             }
-            provided = true
+            provided.value = true
             outStatus.pointee = .haveData
             return sourceBuffer
         }

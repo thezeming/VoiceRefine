@@ -33,14 +33,25 @@ enum HotkeyGesture: String, CaseIterable {
 /// `onPress` fires when the gesture is fully confirmed as deliberate.
 /// `onRelease` fires when the user ends the hold. The contract with
 /// `DictationPipeline` is unchanged regardless of gesture variant.
+///
+/// `@MainActor`: NSEvent monitors and DispatchQueue.main.asyncAfter
+/// callbacks both execute on the main thread; `@MainActor` makes that
+/// contract explicit so Swift 6 can verify state accesses are safe.
+@MainActor
 final class HotkeyManager {
-    private let onPress: () -> Void
-    private let onRelease: () -> Void
+    private let onPress: @MainActor () -> Void
+    private let onRelease: @MainActor () -> Void
 
     private let gesture: HotkeyGesture
 
-    private var globalMonitor: Any?
-    private var localMonitor: Any?
+    // These three are accessed only on main (via @MainActor methods and
+    // NSEvent callbacks). `nonisolated(unsafe)` lets deinit release them
+    // without a hop — deinit runs after the last strong reference drops,
+    // which in practice is always on main (DictationPipeline.stop() sets
+    // hotkeyManager = nil on @MainActor).
+    nonisolated(unsafe) private var globalMonitor: Any?
+    nonisolated(unsafe) private var localMonitor: Any?
+    nonisolated(unsafe) private var holdConfirmWorkItem: DispatchWorkItem?
 
     // MARK: Double-tap state machine (shared by doubleTapShift + doubleTapOption)
     private enum DoubleTapState {
@@ -53,7 +64,6 @@ final class HotkeyManager {
 
     private var doubleTapState: DoubleTapState = .idle
     private var previousFlags: NSEvent.ModifierFlags = []
-    private var holdConfirmWorkItem: DispatchWorkItem?
 
     /// Max duration of the first modifier press for it to count as a tap.
     private let maxTapDuration: TimeInterval = 0.35
@@ -68,7 +78,7 @@ final class HotkeyManager {
 
     // MARK: - Lifecycle
 
-    init(onPress: @escaping () -> Void, onRelease: @escaping () -> Void) {
+    init(onPress: @escaping @MainActor () -> Void, onRelease: @escaping @MainActor () -> Void) {
         self.onPress = onPress
         self.onRelease = onRelease
 
@@ -78,8 +88,13 @@ final class HotkeyManager {
         reload()
     }
 
+    // deinit cannot be @MainActor-isolated; unregister() is called from
+    // DictationPipeline.stop() on main, so the deinit path just releases
+    // the monitors directly (NSEvent.removeMonitor is thread-safe).
     deinit {
-        unregister()
+        if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
+        if let localMonitor  { NSEvent.removeMonitor(localMonitor)  }
+        holdConfirmWorkItem?.cancel()
     }
 
     /// (Re)installs the flagsChanged monitors.

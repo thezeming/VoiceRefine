@@ -4,7 +4,8 @@ import Foundation
 /// (`/v1/chat/completions`) — Ollama accepts the same request shape as
 /// OpenAI with a dummy `Authorization` header, so one HTTP code path
 /// serves Ollama, LM Studio, Together, and any other OpenAI-compat server.
-final class OllamaProvider: RefinementProvider {
+final class OllamaProvider: RefinementProvider, @unchecked Sendable {
+    // @unchecked Sendable: holds only let URLSession; all methods are async.
     static let providerID = RefinementProviderID.ollama
 
     enum ProviderError: Error, CustomStringConvertible {

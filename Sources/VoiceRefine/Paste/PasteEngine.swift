@@ -13,6 +13,10 @@ import CoreGraphics
 /// Restore always fires — via defer-like scheduling — even when step 3
 /// silently fails (missing Accessibility permission). Losing the user's
 /// previous clipboard is worse than failing to paste.
+///
+/// `@MainActor`: NSPasteboard and CGEvent.post must run on the main thread;
+/// the existing `DispatchQueue.main.async` wrappers made that implicit.
+@MainActor
 final class PasteEngine {
     private let restoreDelay: TimeInterval
 
@@ -36,10 +40,9 @@ final class PasteEngine {
         NSLog("VoiceRefine: \(diag)")
         Self.log.append(diag)
 
-        // Post key events on the main queue so CGEvent has the run loop.
-        DispatchQueue.main.async {
-            Self.synthesizeCommandV()
-        }
+        // Already on @MainActor — synthesize immediately, then schedule
+        // the pasteboard restore after the app has time to consume the paste.
+        Self.synthesizeCommandV()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + restoreDelay) {
             Self.restore(pasteboard, from: snapshot)

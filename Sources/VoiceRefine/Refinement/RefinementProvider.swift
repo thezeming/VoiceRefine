@@ -21,7 +21,10 @@ struct RefinementContext: Sendable {
 /// Second-stage provider: cleans up a raw Whisper transcript with optional
 /// context (frontmost app, window title, selected text, glossary). Phase 4
 /// wires Ollama and NoOp; cloud providers arrive in Phase 7.
-protocol RefinementProvider: AnyObject {
+///
+/// `Sendable` conformance mirrors `TranscriptionProvider` — required for
+/// the `any RefinementProvider` existential to cross actor boundaries.
+protocol RefinementProvider: AnyObject, Sendable {
     static var providerID: RefinementProviderID { get }
     func refine(
         transcript: String,

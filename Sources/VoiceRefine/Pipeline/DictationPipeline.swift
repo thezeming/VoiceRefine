@@ -12,6 +12,14 @@ enum DictationState: Equatable {
 /// Orchestrates the dictation pipeline. In Phase 2 that means just hotkey
 /// → microphone → WAV-to-disk; transcription and refinement plug in
 /// during Phase 3 and Phase 4.
+///
+/// `@MainActor` because every piece of state it touches (hotkey callbacks,
+/// state machine, `onStateChange` / `onTranscript` closures, and the
+/// DispatchWorkItem timers) already lived on the main thread. Swift 6 makes
+/// that explicit. Transcription and refinement await off-main inside the
+/// structured Task; the `await MainActor.run` hops at the end of that Task
+/// are now just `self.<property>` assignments (already on main).
+@MainActor
 final class DictationPipeline {
     static let minDuration: TimeInterval = 0.3
     static let maxDuration: TimeInterval = 120.0
@@ -48,14 +56,11 @@ final class DictationPipeline {
     /// `onPartialTranscript`. Only accessed on the main thread.
     private var partialLastEmit: Date = .distantPast
 
-    var onStateChange: ((DictationState) -> Void)?
-    /// Fires with the final (refined) transcript once the full pipeline
-    /// completes. Phase 5 hooks the paste engine here.
-    var onTranscript: ((String) -> Void)?
+    var onTranscript: (@MainActor (String) -> Void)?
     /// Fires with live partial transcripts during Apple Speech streaming.
     /// Always called on the main thread. Throttled to ~5 Hz (200 ms minimum
     /// between emissions). WhisperKit and cloud providers never fire this.
-    var onPartialTranscript: ((String) -> Void)?
+    var onPartialTranscript: (@MainActor (String) -> Void)?
 
     // MARK: - Init
 
@@ -208,24 +213,21 @@ final class DictationPipeline {
                 if Task.isCancelled { return }
                 NSLog("VoiceRefine: refined transcript — \(refined)")
 
-                await MainActor.run {
-                    // Record before firing onTranscript so "Correct last…"
-                    // / "Retry last" see the new entry immediately.
-                    TranscriptionHistory.shared.record(
-                        raw: raw,
-                        refined: refined,
-                        context: context,
-                        frontmostAppBundleID: bundleID
-                    )
-                    self.onTranscript?(refined)
-                    if self.state == .processing {
-                        self.transition(to: .idle)
-                    }
+                // Already on @MainActor — no hop needed.
+                TranscriptionHistory.shared.record(
+                    raw: raw,
+                    refined: refined,
+                    context: context,
+                    frontmostAppBundleID: bundleID
+                )
+                self.onTranscript?(refined)
+                if self.state == .processing {
+                    self.transition(to: .idle)
                 }
             } catch {
                 if Task.isCancelled { return }
                 NSLog("VoiceRefine: transcription error — \(error)")
-                await MainActor.run { self.flashError("Transcription failed.") }
+                self.flashError("Transcription failed.")
             }
         }
     }
@@ -439,13 +441,7 @@ final class DictationPipeline {
 
     private func transition(to newState: DictationState) {
         state = newState
-        if Thread.isMainThread {
-            onStateChange?(newState)
-        } else {
-            DispatchQueue.main.async { [weak self, newState] in
-                self?.onStateChange?(newState)
-            }
-        }
+        onStateChange?(newState)
     }
 
     // MARK: - Diagnostics

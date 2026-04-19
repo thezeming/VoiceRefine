@@ -1,6 +1,7 @@
 import Foundation
 
-final class GroqWhisperProvider: TranscriptionProvider, APIKeyed {
+final class GroqWhisperProvider: TranscriptionProvider, APIKeyed, @unchecked Sendable {
+    // @unchecked Sendable: holds only let URLSession; all methods are async.
     static let providerID = TranscriptionProviderID.groq
     static let apiKeyAccount = TranscriptionProviderID.groq.apiKeyAccount ?? ""
     static var missingAPIKeyError: any Error { ProviderError.missingAPIKey }

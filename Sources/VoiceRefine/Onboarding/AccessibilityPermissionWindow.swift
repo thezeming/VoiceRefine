@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 
+@MainActor
 final class AccessibilityPermissionWindowController: NSWindowController, NSWindowDelegate {
     private var pollTimer: Timer?
     private let onGranted: () -> Void
@@ -30,12 +31,17 @@ final class AccessibilityPermissionWindowController: NSWindowController, NSWindo
 
     private func startPolling() {
         pollTimer?.invalidate()
+        // Timer.scheduledTimer fires on RunLoop.main — guaranteed main thread.
+        // `MainActor.assumeIsolated` communicates that to Swift 6 so we can
+        // call @MainActor-isolated methods from the @Sendable timer closure.
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            if AccessibilityPermission.isTrusted {
-                self.stopPolling()
-                self.window?.orderOut(nil)
-                self.onGranted()
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if AccessibilityPermission.isTrusted {
+                    self.stopPolling()
+                    self.window?.orderOut(nil)
+                    self.onGranted()
+                }
             }
         }
     }

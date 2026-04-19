@@ -2,7 +2,8 @@ import Foundation
 
 /// Refines via OpenAI's chat completion endpoint. Thin wrapper on
 /// `OpenAICompatClient` with a hardcoded api.openai.com base URL.
-final class OpenAIProvider: RefinementProvider, APIKeyed {
+final class OpenAIProvider: RefinementProvider, APIKeyed, @unchecked Sendable {
+    // @unchecked Sendable: no stored mutable state; all methods are async.
     static let providerID = RefinementProviderID.openAI
     static let apiKeyAccount = RefinementProviderID.openAI.apiKeyAccount ?? ""
     static var missingAPIKeyError: any Error { ProviderError.missingAPIKey }

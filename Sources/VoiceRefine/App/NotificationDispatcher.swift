@@ -1,4 +1,5 @@
 import Foundation
+import os
 import UserNotifications
 
 /// Thin wrapper around `UNUserNotificationCenter` so the pipeline can
@@ -7,19 +8,20 @@ import UserNotifications
 /// denied — we never want a missing toast to escalate to something
 /// worse.
 enum NotificationDispatcher {
-    private static let queue = DispatchQueue(label: "com.voicerefine.NotificationDispatcher")
-    nonisolated(unsafe) private static var authorized: Bool = false
-    nonisolated(unsafe) private static var didRequestAuth: Bool = false
+    // OSAllocatedUnfairLock is Swift-Sendable (it is itself a value type
+    // wrapping an os_unfair_lock_t). Replaces the old DispatchQueue.sync
+    // pattern which had a broken guard-inside-closure bug in the original.
+    private static let authState = OSAllocatedUnfairLock(initialState: (authorized: false, didRequest: false))
 
     static func requestAuthorization() {
-        let shouldRequest: Bool = queue.sync {
-            guard !didRequestAuth else { return false }
-            didRequestAuth = true
+        let shouldRequest = authState.withLock { state -> Bool in
+            guard !state.didRequest else { return false }
+            state.didRequest = true
             return true
         }
         guard shouldRequest else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
-            queue.sync { authorized = granted }
+            authState.withLock { $0.authorized = granted }
             if let error {
                 NSLog("VoiceRefine: notification auth failed: \(error)")
             }

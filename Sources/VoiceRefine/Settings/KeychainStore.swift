@@ -19,7 +19,9 @@ enum KeychainError: Error, CustomStringConvertible {
     }
 }
 
-final class KeychainStore {
+final class KeychainStore: @unchecked Sendable {
+    // @unchecked Sendable: holds only a let String; all Keychain APIs are
+    // thread-safe by design — no mutable instance state after init.
     static let shared = KeychainStore()
 
     private let service: String
