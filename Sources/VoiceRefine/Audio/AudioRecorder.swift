@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import os
 
 /// Captures microphone audio while the hotkey is held, converting to
 /// 16 kHz mono Int16 PCM on the fly so we can drop the raw bytes straight
@@ -20,8 +21,11 @@ final class AudioRecorder {
     }
 
     private let engine = AVAudioEngine()
-    private let queue = DispatchQueue(label: "com.voicerefine.AudioRecorder", qos: .userInitiated)
-    private var accumulatedData = Data()
+    /// Protects the accumulated PCM buffer.  The tap callback fires on an
+    /// audio thread; `OSAllocatedUnfairLock` is ~100× cheaper than
+    /// `DispatchQueue.sync` for the tiny critical sections here (buffer-append
+    /// or count-read — never any blocking work under the lock).
+    private let bufferLock = OSAllocatedUnfairLock(initialState: Data())
     private var converter: AVAudioConverter?
     private(set) var isRecording: Bool = false
 
@@ -43,7 +47,7 @@ final class AudioRecorder {
 
     func start() throws {
         guard !isRecording else { return }
-        queue.sync { accumulatedData.removeAll(keepingCapacity: true) }
+        bufferLock.withLock { data in data.removeAll(keepingCapacity: true) }
 
         let input = engine.inputNode
         let inputFormat = input.outputFormat(forBus: 0)
@@ -73,20 +77,23 @@ final class AudioRecorder {
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         isRecording = false
-        return queue.sync { accumulatedData }
+        // Tap is already removed; reading the buffer here is safe but we still
+        // go through the lock for correctness (a queued tap delivery could
+        // theoretically be in-flight just before removeTap returns).
+        return bufferLock.withLock { $0 }
     }
 
     // MARK: - Introspection
 
     var duration: TimeInterval {
-        let bytes = queue.sync { accumulatedData.count }
+        let bytes = bufferLock.withLock { $0.count }
         let bytesPerFrame = Int(targetFormat.streamDescription.pointee.mBytesPerFrame)
         guard bytesPerFrame > 0 else { return 0 }
         return Double(bytes / bytesPerFrame) / targetFormat.sampleRate
     }
 
     var byteCount: Int {
-        queue.sync { accumulatedData.count }
+        bufferLock.withLock { $0.count }
     }
 
     // MARK: - Tap handler
@@ -121,9 +128,7 @@ final class AudioRecorder {
 
         let byteCount = frameCount * MemoryLayout<Int16>.size
         let chunk = Data(bytes: channels.pointee, count: byteCount)
-        queue.sync {
-            accumulatedData.append(chunk)
-        }
+        bufferLock.withLock { data in data.append(chunk) }
     }
 
     // MARK: - WAV export
@@ -132,7 +137,7 @@ final class AudioRecorder {
     /// transcription providers upload this; the disk write below uses
     /// the same bytes.
     func makeWAVData() -> Data {
-        let pcm = queue.sync { accumulatedData }
+        let pcm = bufferLock.withLock { $0 }
         return WAVEncoder.encode(
             pcm: pcm,
             sampleRate: Int(targetFormat.sampleRate),
