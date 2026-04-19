@@ -39,7 +39,6 @@ final class DictationPipeline {
     private let openAIProvider              = OpenAIProvider()
     private let deepSeekProvider            = DeepSeekProvider()
 
-    private let contextGatherer   = ContextGatherer.shared
     private var pendingContext: RefinementContext = .empty
     private var hotkeyManager: HotkeyManager?
     private var maxDurationCutoff: DispatchWorkItem?
@@ -95,7 +94,7 @@ final class DictationPipeline {
         // Snapshot context now — while the user's target app is still the
         // frontmost one. By release it usually still is, but capturing at
         // begin makes us robust against the user tabbing away mid-record.
-        pendingContext = contextGatherer.gather()
+        pendingContext = ContextGatherer.gather()
         if !pendingContext.isEmpty {
             let beforeDesc: String
             if let before = pendingContext.textBeforeCursor {

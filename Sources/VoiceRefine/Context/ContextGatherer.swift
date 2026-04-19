@@ -11,15 +11,14 @@ import ApplicationServices
 /// All AX reads need Accessibility permission; if it's missing, the calls
 /// just return nil (no crash, no error). The gatherer never blocks longer
 /// than a handful of synchronous AX round-trips.
-final class ContextGatherer {
-    static let shared = ContextGatherer()
+enum ContextGatherer {
 
     /// Bundle IDs whose text we refuse to probe even with permission —
     /// password managers expose plaintext secrets in focused fields and
     /// their "windows" are high-signal for credential leakage.
     /// Only gates `textBeforeCursor`; selected-text/app-name behaviour is
     /// unchanged.
-    private let passwordManagerBundleIDs: Set<String> = [
+    private static let passwordManagerBundleIDs: Set<String> = [
         "com.1password.1password",
         "com.1password.1password7",
         "com.1password.1password8",
@@ -41,7 +40,7 @@ final class ContextGatherer {
     /// Gathers a `RefinementContext` suitable for passing into the refine
     /// call. Reads the glossary and before-cursor prefs from `UserDefaults`
     /// on the calling thread.
-    func gather() -> RefinementContext {
+    static func gather() -> RefinementContext {
         let defaults = UserDefaults.standard
         let captureBefore = defaults.bool(forKey: PrefKey.contextCaptureBeforeCursor)
         let rawLimit = defaults.integer(forKey: PrefKey.contextBeforeCursorCharLimit)
@@ -78,7 +77,7 @@ final class ContextGatherer {
         let textBeforeCursor: String?
     }
 
-    private func gatherAX(captureBefore: Bool, beforeLimit: Int) -> RawContext {
+    private static func gatherAX(captureBefore: Bool, beforeLimit: Int) -> RawContext {
         let frontmost = NSWorkspace.shared.frontmostApplication
         let appName = frontmost?.localizedName
         guard let pid = frontmost?.processIdentifier else {
@@ -114,7 +113,7 @@ final class ContextGatherer {
         )
     }
 
-    private func focusedWindowTitle(for axApp: AXUIElement) -> String? {
+    private static func focusedWindowTitle(for axApp: AXUIElement) -> String? {
         guard let windowRef = copyAttribute(axApp, kAXFocusedWindowAttribute as CFString) else { return nil }
         guard CFGetTypeID(windowRef) == AXUIElementGetTypeID() else { return nil }
         let window = windowRef as! AXUIElement
@@ -124,13 +123,13 @@ final class ContextGatherer {
         return title
     }
 
-    private func focusedElement(for axApp: AXUIElement) -> AXUIElement? {
+    private static func focusedElement(for axApp: AXUIElement) -> AXUIElement? {
         guard let elementRef = copyAttribute(axApp, kAXFocusedUIElementAttribute as CFString) else { return nil }
         guard CFGetTypeID(elementRef) == AXUIElementGetTypeID() else { return nil }
         return (elementRef as! AXUIElement)
     }
 
-    private func selectedText(for element: AXUIElement) -> String? {
+    private static func selectedText(for element: AXUIElement) -> String? {
         guard let textRef = copyAttribute(element, kAXSelectedTextAttribute as CFString),
               let text = textRef as? String,
               !text.isEmpty else { return nil }
@@ -149,7 +148,7 @@ final class ContextGatherer {
     ///   - there is no selection/caret attribute (non-text element),
     ///   - the cursor is at offset 0 (nothing before it),
     ///   - neither the parametric nor the full-value AX read returns text.
-    private func textBeforeCursor(for element: AXUIElement, charBudget: Int) -> String? {
+    private static func textBeforeCursor(for element: AXUIElement, charBudget: Int) -> String? {
         // Secure-field guard: role OR subrole can be AXSecureTextField.
         if let roleRef = copyAttribute(element, kAXRoleAttribute as CFString),
            let role = roleRef as? String,
@@ -208,7 +207,7 @@ final class ContextGatherer {
         return finaliseBeforeCursor(prefix: sliced, charBudget: charBudget)
     }
 
-    private func stringForRange(element: AXUIElement, start: CFIndex, length: CFIndex) -> String? {
+    private static func stringForRange(element: AXUIElement, start: CFIndex, length: CFIndex) -> String? {
         var range = CFRange(location: start, length: length)
         guard let axParam = AXValueCreate(.cfRange, &range) else { return nil }
         var out: CFTypeRef?
@@ -226,7 +225,7 @@ final class ContextGatherer {
 
     /// Trims, caps to grapheme budget, and left-snaps to the nearest
     /// whitespace so we don't hand the LLM a half-word like "ing the…".
-    private func finaliseBeforeCursor(prefix: String, charBudget: Int) -> String? {
+    private static func finaliseBeforeCursor(prefix: String, charBudget: Int) -> String? {
         let trimmedInitial = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedInitial.isEmpty { return nil }
 
@@ -256,7 +255,7 @@ final class ContextGatherer {
         return capped
     }
 
-    private func copyAttribute(_ element: AXUIElement, _ attribute: CFString) -> CFTypeRef? {
+    private static func copyAttribute(_ element: AXUIElement, _ attribute: CFString) -> CFTypeRef? {
         var ref: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(element, attribute, &ref)
         guard result == .success else { return nil }
