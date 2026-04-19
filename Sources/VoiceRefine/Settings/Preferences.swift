@@ -22,6 +22,10 @@ enum PrefKey {
     /// flow. Stored in the same style as `glossary` (plain newline-delimited
     /// text). Wiring into refinement context is a follow-up task.
     static let learnedGlossary              = "learnedGlossary"
+
+    static let perAppSystemPrompts          = "perAppSystemPrompts"
+    static let hotkeyGesture                = "hotkeyGesture"
+    static let showRecordingIndicator       = "showRecordingIndicator"
 }
 
 enum ContextLimits {
@@ -107,7 +111,11 @@ enum PrefDefaults {
 
             PrefKey.disableDiagnosticLogs:        false,
 
-            PrefKey.learnedGlossary:              ""
+            PrefKey.learnedGlossary:              "",
+
+            PrefKey.perAppSystemPrompts:          "",
+            PrefKey.hotkeyGesture:                "doubleTapShift",
+            PrefKey.showRecordingIndicator:       true
         ]
 
         for provider in TranscriptionProviderID.allCases {
