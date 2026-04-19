@@ -4,10 +4,12 @@ import Foundation
 /// base URL; otherwise indistinguishable from `OpenAIProvider` — both
 /// route through `OpenAICompatClient`. Pulled in as a cost-effective
 /// cloud alternative to Anthropic / OpenAI.
-final class DeepSeekProvider: RefinementProvider {
+final class DeepSeekProvider: RefinementProvider, APIKeyed {
     static let providerID = RefinementProviderID.deepseek
+    static let apiKeyAccount = RefinementProviderID.deepseek.apiKeyAccount ?? ""
+    static var missingAPIKeyError: any Error { ProviderError.missingAPIKey }
 
-    enum ProviderError: Error, CustomStringConvertible {
+    enum ProviderError: CloudProviderError {
         case missingAPIKey
         case clientError(OpenAICompatClient.ClientError)
 
@@ -26,10 +28,7 @@ final class DeepSeekProvider: RefinementProvider {
         systemPrompt: String,
         context: RefinementContext
     ) async throws -> String {
-        guard let apiKey = KeychainStore.shared.get(account: RefinementProviderID.deepseek.apiKeyAccount ?? ""),
-              !apiKey.isEmpty else {
-            throw ProviderError.missingAPIKey
-        }
+        let apiKey = try Self.requireAPIKey()
 
         let model = UserDefaults.standard.string(forKey: RefinementProviderID.deepseek.modelPreferenceKey)
             ?? RefinementProviderID.deepseek.defaultModel

@@ -4,14 +4,16 @@ import Foundation
 /// OpenAI-style Bearer header, and wraps responses as an array of
 /// content blocks — enough API divergence that it doesn't share the
 /// OpenAI-compat client.
-final class AnthropicProvider: RefinementProvider {
+final class AnthropicProvider: RefinementProvider, APIKeyed {
     static let providerID = RefinementProviderID.anthropic
+    static let apiKeyAccount = RefinementProviderID.anthropic.apiKeyAccount ?? ""
+    static var missingAPIKeyError: any Error { ProviderError.missingAPIKey }
 
     private static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
     private static let apiVersion = "2023-06-01"
     private static let maxTokens = 2048
 
-    enum ProviderError: Error, CustomStringConvertible {
+    enum ProviderError: CloudProviderError {
         case missingAPIKey
         case unreachable
         case httpStatus(Int, String?)
@@ -38,10 +40,7 @@ final class AnthropicProvider: RefinementProvider {
         systemPrompt: String,
         context: RefinementContext
     ) async throws -> String {
-        guard let apiKey = KeychainStore.shared.get(account: RefinementProviderID.anthropic.apiKeyAccount ?? ""),
-              !apiKey.isEmpty else {
-            throw ProviderError.missingAPIKey
-        }
+        let apiKey = try Self.requireAPIKey()
 
         let model = UserDefaults.standard.string(forKey: RefinementProviderID.anthropic.modelPreferenceKey)
             ?? RefinementProviderID.anthropic.defaultModel

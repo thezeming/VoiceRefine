@@ -1,9 +1,11 @@
 import Foundation
 
-final class GroqWhisperProvider: TranscriptionProvider {
+final class GroqWhisperProvider: TranscriptionProvider, APIKeyed {
     static let providerID = TranscriptionProviderID.groq
+    static let apiKeyAccount = TranscriptionProviderID.groq.apiKeyAccount ?? ""
+    static var missingAPIKeyError: any Error { ProviderError.missingAPIKey }
 
-    enum ProviderError: Error, CustomStringConvertible {
+    enum ProviderError: CloudProviderError {
         case missingAPIKey
         case httpError(CloudWhisperHTTP.HTTPError)
 
@@ -18,10 +20,7 @@ final class GroqWhisperProvider: TranscriptionProvider {
     private static let endpoint = URL(string: "https://api.groq.com/openai/v1/audio/transcriptions")!
 
     func transcribe(audio: Data, model: String) async throws -> String {
-        guard let apiKey = KeychainStore.shared.get(account: TranscriptionProviderID.groq.apiKeyAccount ?? ""),
-              !apiKey.isEmpty else {
-            throw ProviderError.missingAPIKey
-        }
+        let apiKey = try Self.requireAPIKey()
 
         let wav = WAVEncoder.encode(pcm: audio, sampleRate: 16_000, channels: 1, bitsPerSample: 16)
 

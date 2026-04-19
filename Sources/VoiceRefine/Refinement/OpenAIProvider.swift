@@ -2,10 +2,12 @@ import Foundation
 
 /// Refines via OpenAI's chat completion endpoint. Thin wrapper on
 /// `OpenAICompatClient` with a hardcoded api.openai.com base URL.
-final class OpenAIProvider: RefinementProvider {
+final class OpenAIProvider: RefinementProvider, APIKeyed {
     static let providerID = RefinementProviderID.openAI
+    static let apiKeyAccount = RefinementProviderID.openAI.apiKeyAccount ?? ""
+    static var missingAPIKeyError: any Error { ProviderError.missingAPIKey }
 
-    enum ProviderError: Error, CustomStringConvertible {
+    enum ProviderError: CloudProviderError {
         case missingAPIKey
         case clientError(OpenAICompatClient.ClientError)
 
@@ -24,10 +26,7 @@ final class OpenAIProvider: RefinementProvider {
         systemPrompt: String,
         context: RefinementContext
     ) async throws -> String {
-        guard let apiKey = KeychainStore.shared.get(account: RefinementProviderID.openAI.apiKeyAccount ?? ""),
-              !apiKey.isEmpty else {
-            throw ProviderError.missingAPIKey
-        }
+        let apiKey = try Self.requireAPIKey()
 
         let model = UserDefaults.standard.string(forKey: RefinementProviderID.openAI.modelPreferenceKey)
             ?? RefinementProviderID.openAI.defaultModel

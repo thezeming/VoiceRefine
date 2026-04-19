@@ -8,7 +8,7 @@ import Foundation
 final class OpenAICompatibleProvider: RefinementProvider {
     static let providerID = RefinementProviderID.openAICompatible
 
-    enum ProviderError: Error, CustomStringConvertible {
+    enum ProviderError: CloudProviderError {
         case missingBaseURL
         case invalidBaseURL(String)
         case missingModel
