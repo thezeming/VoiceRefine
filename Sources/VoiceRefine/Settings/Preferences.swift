@@ -114,7 +114,7 @@ enum PrefDefaults {
             PrefKey.learnedGlossary:              "",
 
             PrefKey.perAppSystemPrompts:          "",
-            PrefKey.hotkeyGesture:                "doubleTapShift",
+            PrefKey.hotkeyGesture:                HotkeyGesture.doubleTapShift.rawValue,
             PrefKey.showRecordingIndicator:       true
         ]
 

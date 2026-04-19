@@ -12,6 +12,13 @@ struct GeneralTab: View {
     @AppStorage(PrefKey.selectedRefinementProvider)
     private var refinementProviderRaw: String = RefinementProviderID.ollama.rawValue
 
+    @AppStorage(PrefKey.hotkeyGesture)
+    private var hotkeyGestureRaw: String = HotkeyGesture.doubleTapShift.rawValue
+
+    private var selectedGesture: HotkeyGesture {
+        HotkeyGesture(rawValue: hotkeyGestureRaw) ?? .doubleTapShift
+    }
+
     private var activeCloudRefinerName: String? {
         guard let id = RefinementProviderID(rawValue: refinementProviderRaw),
               !id.isLocal else { return nil }
@@ -20,14 +27,18 @@ struct GeneralTab: View {
 
     var body: some View {
         Form {
-            Section("Hotkey") {
-                LabeledContent("Push-to-talk") {
-                    Text("Double-tap ⇧ and hold")
-                        .foregroundStyle(.secondary)
-                    + Text(" — release to transcribe")
-                        .font(.footnote)
-                        .foregroundStyle(.tertiary)
+            Section {
+                Picker("Push-to-talk gesture", selection: $hotkeyGestureRaw) {
+                    ForEach(HotkeyGesture.allCases, id: \.rawValue) { gesture in
+                        Text(gesture.displayName).tag(gesture.rawValue)
+                    }
                 }
+            } header: {
+                Text("Hotkey")
+            } footer: {
+                Text("Release the gesture to transcribe. Restart VoiceRefine for gesture changes to take effect.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Behaviour") {
