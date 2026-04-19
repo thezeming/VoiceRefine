@@ -16,6 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Phases are ordered and gated.** Work through `PLAN.md` phases 0 → 9 in sequence. At the end of each phase, commit and hand the user a concrete manual test, then **stop and wait** for confirmation before starting the next phase.
 - **Commit message format:** `feat(phase-N): short description` (e.g. `feat(phase-3): whisperkit transcription`). One commit per phase minimum.
+- **Push to GitHub (`git push`) after every meaningful commit.** End of a phase, fix, feature, docs sweep — anything worth reading. Don't let local work pile up unpushed; the remote is the authoritative backup. Tiny WIP / formatting-only commits can batch, but default to pushing.
 - Don't ask about naming, code style, or minor design. Pick something sensible and note the decision in this file under "Decisions made along the way".
 - If you discover the plan is wrong as you implement, say so and propose an alternative — don't silently deviate.
 
