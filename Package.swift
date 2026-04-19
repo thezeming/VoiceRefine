@@ -19,6 +19,11 @@ let package = Package(
                 .product(name: "WhisperKit", package: "WhisperKit")
             ],
             path: "Sources/VoiceRefine"
+        ),
+        .testTarget(
+            name: "VoiceRefineTests",
+            dependencies: ["VoiceRefine"],
+            path: "Tests/VoiceRefineTests"
         )
     ]
 )
