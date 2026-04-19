@@ -259,12 +259,10 @@ final class DictationPipeline {
     private func flashError(_ message: String) {
         transition(to: .error(message))
         NotificationDispatcher.postError(title: "VoiceRefine error", message: message)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            guard let self else { return }
-            if case .error = self.state {
-                self.transition(to: .idle)
-            }
-        }
+        // The error state persists until the next successful dictation —
+        // `beginRecording()` transitions to `.recording`, which naturally
+        // clears it. Auto-clearing after 1.5 s made transient failures
+        // invisible on a crowded menu bar (hidden behind the notch).
     }
 
     private func scheduleMaxDurationCutoff() {

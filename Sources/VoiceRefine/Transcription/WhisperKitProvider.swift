@@ -53,13 +53,67 @@ final class WhisperKitProvider: TranscriptionProvider {
         return (contents?.count ?? 0) > 0
     }
 
+    /// Rough on-disk size (bytes) of each WhisperKit model we ship in the
+    /// picker, used for progress estimation during `prefetch`. Not
+    /// authoritative — HF Hub may change checkpoint layout — but close
+    /// enough for a visual download bar. Unknown model → sensible default.
+    static let approximateModelSizeBytes: [String: Int64] = [
+        "openai_whisper-base.en":                    142 * 1_048_576,
+        "openai_whisper-small.en":                   466 * 1_048_576,
+        "openai_whisper-medium.en":                 1460 * 1_048_576,
+        "openai_whisper-large-v3-v20240930_turbo":  1550 * 1_048_576
+    ]
+
     /// Eagerly fetches + loads `model` so the first real dictation isn't
     /// delayed by a ~150 MB download and a CoreML compile. Used by the
     /// Transcription tab's "Download" button; safe to call when the model
     /// is already present (cheap re-load).
-    static func prefetch(model: String) async throws {
+    ///
+    /// `progress` is called with a value in `0.0…1.0` estimated from the
+    /// on-disk footprint of the model folder relative to
+    /// `approximateModelSizeBytes`. Sampled every ~500 ms on a detached
+    /// poller — WhisperKit's own constructor does not expose a progress
+    /// stream we can hook, so this is the best observable proxy.
+    static func prefetch(
+        model: String,
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws {
         let provider = WhisperKitProvider()
+        let pollTask: Task<Void, Never>?
+        if let progress {
+            let expected = approximateModelSizeBytes[model] ?? 150 * 1_048_576
+            pollTask = Task.detached {
+                while !Task.isCancelled {
+                    let bytes = folderSizeBytes(for: model)
+                    let frac = min(0.99, Double(bytes) / Double(expected))
+                    progress(frac)
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                }
+            }
+        } else {
+            pollTask = nil
+        }
+        defer {
+            pollTask?.cancel()
+            progress?(1.0)
+        }
         try await provider.ensureLoaded(model: model)
+    }
+
+    /// Recursive byte-size of the model directory, or 0 if missing.
+    private static func folderSizeBytes(for model: String) -> Int64 {
+        let folder = downloadBaseURL.appendingPathComponent(model, isDirectory: true)
+        guard let enumerator = FileManager.default.enumerator(
+            at: folder,
+            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey]
+        ) else { return 0 }
+        var total: Int64 = 0
+        for case let url as URL in enumerator {
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+            guard values?.isRegularFile == true else { continue }
+            total += Int64(values?.fileSize ?? 0)
+        }
+        return total
     }
 
     // MARK: - Transcription

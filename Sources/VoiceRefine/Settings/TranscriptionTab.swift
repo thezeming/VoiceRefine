@@ -116,15 +116,16 @@ private struct TranscriptionModelPicker: View {
 }
 
 /// WhisperKit model status + explicit download button. Replaces the
-/// placeholder "Not downloaded / disabled Download" row with live state.
-/// Progress is coarse (spinner only); proper percentage comes in a later
-/// polish pass when we hook WhisperKit's download delegate.
+/// placeholder "Not downloaded / disabled Download" row with live state
+/// and a rough progress bar sourced from the download folder's on-disk
+/// footprint (WhisperKit doesn't expose a real progress stream).
 private struct WhisperKitModelStatusRow: View {
     @AppStorage(TranscriptionProviderID.whisperKit.modelPreferenceKey)
     private var model: String = TranscriptionProviderID.whisperKit.defaultModel
 
     @State private var isDownloaded: Bool = false
     @State private var isDownloading: Bool = false
+    @State private var downloadProgress: Double = 0
     @State private var errorMessage: String? = nil
 
     var body: some View {
@@ -140,7 +141,7 @@ private struct WhisperKitModelStatusRow: View {
             .font(.callout)
 
             if isDownloading {
-                ProgressView().progressViewStyle(.linear)
+                ProgressView(value: downloadProgress)
             }
             if let err = errorMessage {
                 Text(err)
@@ -155,7 +156,9 @@ private struct WhisperKitModelStatusRow: View {
     @ViewBuilder
     private var statusLabel: some View {
         if isDownloading {
-            Text("Downloading…").foregroundStyle(.orange)
+            Text(String(format: "Downloading… %d%%", Int((downloadProgress * 100).rounded())))
+                .foregroundStyle(.orange)
+                .monospacedDigit()
         } else if isDownloaded {
             Text("Downloaded").foregroundStyle(.green)
         } else {
@@ -172,13 +175,20 @@ private struct WhisperKitModelStatusRow: View {
         guard !isDownloading, !isDownloaded else { return }
         let target = model
         isDownloading = true
+        downloadProgress = 0
         errorMessage = nil
         Task {
             do {
-                try await WhisperKitProvider.prefetch(model: target)
+                try await WhisperKitProvider.prefetch(model: target) { frac in
+                    Task { @MainActor in
+                        guard target == model else { return }
+                        downloadProgress = frac
+                    }
+                }
                 await MainActor.run {
                     guard target == model else { return }
                     isDownloading = false
+                    downloadProgress = 1
                     isDownloaded = WhisperKitProvider.isModelDownloaded(target)
                 }
             } catch {

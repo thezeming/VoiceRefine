@@ -54,6 +54,9 @@ private struct OnboardingView: View {
     @State private var whisperModel: String = UserDefaults.standard.string(forKey: TranscriptionProviderID.whisperKit.modelPreferenceKey)
         ?? TranscriptionProviderID.whisperKit.defaultModel
     @State private var whisperDownloaded: Bool = false
+    @State private var isDownloadingWhisper: Bool = false
+    @State private var whisperDownloadProgress: Double = 0
+    @State private var whisperDownloadMessage: String = ""
 
     @State private var appleSpeechLocaleID: String = UserDefaults.standard.string(forKey: TranscriptionProviderID.appleSpeech.modelPreferenceKey)
         ?? TranscriptionProviderID.appleSpeech.defaultModel
@@ -159,7 +162,13 @@ private struct OnboardingView: View {
         .padding(24)
         .frame(width: 560, height: 520, alignment: .topLeading)
         .task { await refresh() }
-        .onReceive(Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(Timer.publish(every: 3.0, on: .main, in: .common).autoconnect()) { _ in
+            Task { await refresh() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            // User pulled focus back (likely returning from System Settings
+            // / Ollama.app) — re-run everything immediately rather than
+            // waiting for the next 3 s tick.
             Task { await refresh() }
         }
     }
@@ -221,10 +230,23 @@ private struct OnboardingView: View {
         case .whisperKit:
             ChecklistRow(
                 title: "Whisper model: \(whisperModel)",
-                status: whisperDownloaded ? .ok("downloaded") : .todo("first recording will fetch it (~142 MB)"),
-                actionTitle: nil,
-                action: {}
+                status: whisperDownloaded
+                    ? .ok("downloaded")
+                    : .todo("~142 MB — download once, then offline"),
+                actionTitle: whisperDownloaded
+                    ? nil
+                    : (isDownloadingWhisper ? "Downloading…" : "Download"),
+                action: { downloadWhisperTapped() }
             )
+            if isDownloadingWhisper {
+                VStack(alignment: .leading, spacing: 4) {
+                    ProgressView(value: whisperDownloadProgress)
+                    Text(whisperDownloadMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.leading, 28)
+            }
         case .groq, .openAIWhisper:
             ChecklistRow(
                 title: "Transcription: \(transcriptionProvider.displayName)",
@@ -232,6 +254,42 @@ private struct OnboardingView: View {
                 actionTitle: nil,
                 action: {}
             )
+        }
+    }
+
+    private func downloadWhisperTapped() {
+        guard !isDownloadingWhisper, !whisperDownloaded else { return }
+        let target = whisperModel
+        isDownloadingWhisper = true
+        whisperDownloadProgress = 0
+        whisperDownloadMessage = "Starting download…"
+        Task {
+            do {
+                try await WhisperKitProvider.prefetch(model: target) { frac in
+                    Task { @MainActor in
+                        guard target == whisperModel else { return }
+                        whisperDownloadProgress = frac
+                        whisperDownloadMessage = String(
+                            format: "Downloading %@… %d%%",
+                            target,
+                            Int((frac * 100).rounded())
+                        )
+                    }
+                }
+                await MainActor.run {
+                    guard target == whisperModel else { return }
+                    isDownloadingWhisper = false
+                    whisperDownloadProgress = 1
+                    whisperDownloaded = WhisperKitProvider.isModelDownloaded(target)
+                    whisperDownloadMessage = "Installed \(target)."
+                }
+            } catch {
+                await MainActor.run {
+                    guard target == whisperModel else { return }
+                    isDownloadingWhisper = false
+                    whisperDownloadMessage = "Download failed: \(error.localizedDescription)"
+                }
+            }
         }
     }
 
@@ -373,11 +431,22 @@ private struct OnboardingView: View {
             }
         }
 
-        ollamaState = await OllamaDetector.shared.check()
-        if ollamaState == .running {
-            ollamaInstalledModels = await OllamaDetector.shared.listInstalledModels()
-        } else {
-            ollamaInstalledModels = []
+        // Skip Ollama probes once we've confirmed it's running AND the
+        // selected model is already pulled — that's the terminal state
+        // the onboarding cares about. `didBecomeActiveNotification`
+        // still triggers a full refresh, so a user who stops Ollama
+        // mid-session or pulls a new model externally catches up on
+        // next focus. Saves ~40 HTTP calls / minute while onboarding is
+        // open and the user is just reading.
+        let ollamaSettled = ollamaState == .running
+            && ollamaInstalledModels.contains(selectedOllamaModel)
+        if !ollamaSettled {
+            ollamaState = await OllamaDetector.shared.check()
+            if ollamaState == .running {
+                ollamaInstalledModels = await OllamaDetector.shared.listInstalledModels()
+            } else {
+                ollamaInstalledModels = []
+            }
         }
     }
 }
