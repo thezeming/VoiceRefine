@@ -223,17 +223,25 @@ enum ContextGatherer {
         return s
     }
 
-    /// Trims, caps to grapheme budget, and left-snaps to the nearest
+    /// Left-trims, caps to grapheme budget, and left-snaps to the nearest
     /// whitespace so we don't hand the LLM a half-word like "ing the…".
+    ///
+    /// Trailing whitespace is **preserved on purpose** — the
+    /// `JoinAdjuster` post-processor reads the last non-whitespace char
+    /// (and whether whitespace follows it) to decide if the refined
+    /// dictation should start capitalized, lowercase, or with a leading
+    /// space. Right-trimming here threw that signal away.
     private static func finaliseBeforeCursor(prefix: String, charBudget: Int) -> String? {
-        let trimmedInitial = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedInitial.isEmpty { return nil }
+        // Left-trim only. `drop(while:)` returns a Substring, so we
+        // re-wrap before the String-only range math below.
+        let leftTrimmed = String(prefix.drop(while: { $0.isWhitespace || $0.isNewline }))
+        if leftTrimmed.isEmpty { return nil }
 
         // Cap to grapheme budget from the right (tail is what matters).
         let capped: String = {
-            if trimmedInitial.count <= charBudget { return trimmedInitial }
-            let start = trimmedInitial.index(trimmedInitial.endIndex, offsetBy: -charBudget)
-            return String(trimmedInitial[start...])
+            if leftTrimmed.count <= charBudget { return leftTrimmed }
+            let start = leftTrimmed.index(leftTrimmed.endIndex, offsetBy: -charBudget)
+            return String(leftTrimmed[start...])
         }()
 
         // Only snap if we probably cut mid-word. Scan the first ~100
@@ -246,9 +254,9 @@ enum ContextGatherer {
             let afterStart = capped.index(after: wsIdx)
             if afterStart < capped.endIndex {
                 let tail = String(capped[afterStart...])
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .drop(while: { $0.isWhitespace || $0.isNewline })
                 if !tail.isEmpty {
-                    return tail
+                    return String(tail)
                 }
             }
         }

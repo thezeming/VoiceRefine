@@ -213,14 +213,28 @@ final class DictationPipeline {
                 if Task.isCancelled { return }
                 NSLog("VoiceRefine: refined transcript — \(refined)")
 
-                // Already on @MainActor — no hop needed.
+                // Deterministic join: add a leading space / lowercase the
+                // first word depending on what sits before the caret.
+                // `context.textBeforeCursor` has its trailing whitespace
+                // preserved by ContextGatherer specifically for this.
+                let final = JoinAdjuster.adjust(
+                    refined: refined,
+                    textBeforeCursor: context.textBeforeCursor
+                )
+                if final != refined {
+                    NSLog("VoiceRefine: join-adjusted transcript — \(final)")
+                }
+
+                // Already on @MainActor — no hop needed. Record the
+                // joined text so the correct-last flow replays exactly
+                // what was pasted.
                 TranscriptionHistory.shared.record(
                     raw: raw,
-                    refined: refined,
+                    refined: final,
                     context: context,
                     frontmostAppBundleID: bundleID
                 )
-                self.onTranscript?(refined)
+                self.onTranscript?(final)
                 if self.state == .processing {
                     self.transition(to: .idle)
                 }

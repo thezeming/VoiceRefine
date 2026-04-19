@@ -72,6 +72,18 @@ enum PrefDefaults {
       response in quotes, backticks, or markdown fences. Begin your response \
       with the first word of the cleaned text.
 
+    JOINING WITH PRIOR TEXT
+    If <text_before_cursor> is present, your output will be appended to it \
+    at the caret position. Adjust the START of your output accordingly:
+    - If <text_before_cursor> ends with '.', '!', '?', ':', a newline, or \
+      is empty — start your output with a capitalized first word.
+    - If <text_before_cursor> ends mid-sentence (a letter, digit, comma, \
+      semicolon, or dash) — start your output with a LOWERCASE first word \
+      so the joined sentence reads naturally.
+    - Do NOT add a leading space yourself. The host app handles spacing.
+    - Exception: keep "I", "I'm", "I've", "I'd", "I'll", and acronyms like \
+      "API" / "URL" capitalized even mid-sentence.
+
     EXAMPLE
 
     Input:
