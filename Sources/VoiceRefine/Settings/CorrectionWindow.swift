@@ -4,11 +4,17 @@ import SwiftUI
 // MARK: - Window controller
 
 /// Presents the "Correct last…" editor and wires Save / Cancel.
+///
+/// The SwiftUI view is rebuilt on every `present()` (when the window isn't
+/// already visible) so `@State` reflects the *current* `TranscriptionHistory`
+/// entry. NSHostingController + a hidden NSWindow doesn't reliably re-fire
+/// `.onAppear` when the window is brought back to front, so relying on it
+/// gave an empty editor whenever the user pressed ⌥⌘R after dictation.
 final class CorrectionWindowController: NSWindowController, NSWindowDelegate {
     convenience init() {
-        let view = CorrectionView()
-        let host = NSHostingController(rootView: view)
-        let window = NSWindow(contentViewController: host)
+        // Placeholder content — real CorrectionView is installed on first present().
+        let placeholder = NSHostingController(rootView: Color.clear.frame(width: 560, height: 280))
+        let window = NSWindow(contentViewController: placeholder)
         window.styleMask = [.titled, .closable]
         window.title = "Correct Last Dictation"
         window.setContentSize(NSSize(width: 560, height: 280))
@@ -19,68 +25,96 @@ final class CorrectionWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func present() {
+        guard let window else { return }
+        if !window.isVisible {
+            let entry = TranscriptionHistory.shared.mostRecent()
+            NSLog("VoiceRefine: CorrectLast present — entry=\(entry == nil ? "nil" : "refined=\(entry!.refined.count)c, raw=\(entry!.raw.count)c, bundle=\(entry!.frontmostAppBundleID ?? "-")")")
+
+            let view = CorrectionView(
+                initialRefined: entry?.refined ?? "",
+                initialRaw: entry?.raw ?? "",
+                initialBundleID: entry?.frontmostAppBundleID,
+                dismiss: { [weak self] in self?.window?.close() }
+            )
+            window.contentViewController = NSHostingController(rootView: view)
+        }
         NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
+        window.makeKeyAndOrderFront(nil)
     }
 
     func windowWillClose(_ notification: Notification) {
-        // Nothing extra needed — SwiftUI state resets on next open because
-        // CorrectionView reads from TranscriptionHistory on appear.
+        // Nothing to clean up — the next present() rebuilds contentViewController.
     }
 }
 
 // MARK: - SwiftUI view
 
 private struct CorrectionView: View {
-    @State private var editedText: String = ""
-    @State private var originalRefined: String = ""
-    @State private var rawTranscript: String = ""
-    @State private var targetBundleID: String? = nil
+    @State private var editedText: String
+    private let originalRefined: String
+    private let rawTranscript: String
+    private let targetBundleID: String?
+    private let dismiss: () -> Void
+
+    init(
+        initialRefined: String,
+        initialRaw: String,
+        initialBundleID: String?,
+        dismiss: @escaping () -> Void
+    ) {
+        _editedText = State(initialValue: initialRefined)
+        self.originalRefined = initialRefined
+        self.rawTranscript = initialRaw
+        self.targetBundleID = initialBundleID
+        self.dismiss = dismiss
+    }
+
+    private var hasRecent: Bool {
+        !originalRefined.isEmpty || !rawTranscript.isEmpty
+    }
+
+    private var canSave: Bool {
+        hasRecent && !editedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Edit the dictated text, then save to re-paste it.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            if hasRecent {
+                Text("Edit the dictated text, then save to re-paste it into the original app.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("No recent dictation to correct. Dictate something first, then re-open this window with ⌥⌘R.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
 
             TextEditor(text: $editedText)
                 .font(.body)
                 .frame(minHeight: 140)
                 .border(Color(NSColor.separatorColor), width: 1)
+                .disabled(!hasRecent)
 
             HStack {
                 Spacer()
-                Button("Cancel") {
-                    closeWindow()
-                }
-                .keyboardShortcut(.cancelAction)
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
 
-                Button("Save") {
-                    save()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(editedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Save") { save() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canSave)
             }
         }
         .padding(20)
-        .onAppear { loadFromStore() }
     }
 
     // MARK: - Helpers
 
-    private func loadFromStore() {
-        // Must be called on MainActor; View body + onAppear are always on main.
-        if let entry = TranscriptionHistory.shared.mostRecent() {
-            editedText = entry.refined
-            originalRefined = entry.refined
-            rawTranscript = entry.raw
-            targetBundleID = entry.frontmostAppBundleID
-        }
-    }
-
     private func save() {
         let trimmed = editedText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+
+        NSLog("VoiceRefine: CorrectLast save — orig=\(originalRefined.count)c, new=\(trimmed.count)c, bundle=\(targetBundleID ?? "nil")")
 
         // 1. Compute new tokens and append to learned glossary.
         let additions = TokenDiff.additions(old: originalRefined, new: trimmed)
@@ -103,7 +137,7 @@ private struct CorrectionView: View {
         activateTargetApp()
         PasteEngine().paste(trimmed, replacingPreviousLength: originalRefined.count)
 
-        closeWindow()
+        dismiss()
     }
 
     /// Merges `newTokens` into the `learnedGlossary` pref, deduplicating
@@ -143,13 +177,6 @@ private struct CorrectionView: View {
             app.activate()
         }
         // Give the app a moment to come forward before CGEvent posts ⌘V.
-        // This is a short synchronous pause on the main thread — acceptable
-        // here because we are inside a button action and the user sees the
-        // window close immediately after.
         Thread.sleep(forTimeInterval: 0.15)
-    }
-
-    private func closeWindow() {
-        NSApp.keyWindow?.close()
     }
 }
