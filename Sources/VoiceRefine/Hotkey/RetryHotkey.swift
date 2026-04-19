@@ -1,14 +1,12 @@
 import AppKit
 
-/// Global ⌥R chord for "Retry last refinement".
+/// Global ⌃R chord for "Retry last refinement".
 ///
-/// Caveat: ⌥R is a *typing* chord on most layouts — US types `®`, other
-/// locales type their own glyph. Because the global monitor can't
-/// suppress events (only the local monitor can, and only when our menu-
-/// bar app is frontmost — which it rarely is), the host app types the
-/// character first AND we then fire retry, which backspaces the
-/// previous paste. The typed glyph ends up off by one. Switch to a
-/// non-typing chord (e.g. ⌥⌘R) here if that becomes a problem.
+/// Caveat: ⌃R is the standard reverse-i-search shortcut in bash/zsh,
+/// "redo" in vim, and "isearch-backward" in emacs. We can't suppress
+/// global events, so the terminal/editor still receives ⌃R AND retry
+/// fires whenever the session has prior dictation history. Switch to
+/// ⌥⌘R or ⌃⌘R here if that becomes a problem.
 @MainActor
 final class RetryHotkey {
     private let onTrigger: @MainActor () -> Void
@@ -45,9 +43,9 @@ final class RetryHotkey {
     private func handle(_ event: NSEvent) {
         guard event.keyCode == Self.rKeyCode else { return }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        // Exact-match: ⌥ only — no shift, control, command, capslock, function.
-        // Picky on purpose so chords like ⌥⌘R don't fire by accident.
-        guard flags == .option else { return }
+        // Exact-match: ⌃ only — no shift, option, command, capslock, function.
+        // Picky on purpose so chords like ⌃⌘R don't fire by accident.
+        guard flags == .control else { return }
         onTrigger()
     }
 }
