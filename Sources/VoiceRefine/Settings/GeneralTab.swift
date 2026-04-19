@@ -57,7 +57,7 @@ struct GeneralTab: View {
             } header: {
                 Text("Hotkey")
             } footer: {
-                Text("Release the gesture to transcribe. Changes apply immediately — no restart needed. Press \u{2318}R from any app to retry the last refinement.")
+                Text("Release the gesture to transcribe. Changes apply immediately — no restart needed. Press \u{2325}R from any app to retry the last refinement.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

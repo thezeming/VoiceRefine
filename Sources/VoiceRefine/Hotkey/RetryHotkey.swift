@@ -1,13 +1,14 @@
 import AppKit
 
-/// Global ⌘R chord for "Retry last refinement".
+/// Global ⌥R chord for "Retry last refinement".
 ///
-/// Caveat: ⌘R is widely used (browser reload, IDE run/refactor, Slack
-/// reactions, Finder…). Because the local monitor returns the event
-/// (we never swallow keystrokes), the host app still receives ⌘R AND we
-/// also fire retry. Whenever the user presses ⌘R in *any* app, retry
-/// will run if there's a previous transcription in history. Switch to a
-/// less-conflicting chord (e.g. ⌃⌘R) here if that becomes a problem.
+/// Caveat: ⌥R is a *typing* chord on most layouts — US types `®`, other
+/// locales type their own glyph. Because the global monitor can't
+/// suppress events (only the local monitor can, and only when our menu-
+/// bar app is frontmost — which it rarely is), the host app types the
+/// character first AND we then fire retry, which backspaces the
+/// previous paste. The typed glyph ends up off by one. Switch to a
+/// non-typing chord (e.g. ⌥⌘R) here if that becomes a problem.
 @MainActor
 final class RetryHotkey {
     private let onTrigger: @MainActor () -> Void
@@ -44,9 +45,9 @@ final class RetryHotkey {
     private func handle(_ event: NSEvent) {
         guard event.keyCode == Self.rKeyCode else { return }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        // Exact-match: ⌘ only — no shift, control, option, capslock, function.
-        // Picky on purpose so a stray ⌘⇧R (e.g. browser hard-reload) doesn't fire.
-        guard flags == .command else { return }
+        // Exact-match: ⌥ only — no shift, control, command, capslock, function.
+        // Picky on purpose so chords like ⌥⌘R don't fire by accident.
+        guard flags == .option else { return }
         onTrigger()
     }
 }
