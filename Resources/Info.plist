@@ -30,6 +30,8 @@
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>VoiceRefine records audio while you hold the push-to-talk hotkey so it can transcribe what you say.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>VoiceRefine uses on-device speech recognition to turn your dictated audio into text. No audio leaves your Mac.</string>
     <key>NSHumanReadableCopyright</key>
     <string>© 2026 VoiceRefine. Local-first dictation for macOS.</string>
 </dict>
