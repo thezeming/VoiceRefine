@@ -28,6 +28,7 @@ bundle: build
 	@mkdir -p $(BUNDLE)/Contents/MacOS
 	@mkdir -p $(BUNDLE)/Contents/Resources
 	@cp -f Resources/Info.plist $(BUNDLE)/Contents/Info.plist
+	@cp -f Resources/AppIcon.icns $(BUNDLE)/Contents/Resources/AppIcon.icns
 	@printf 'APPL????' > $(BUNDLE)/Contents/PkgInfo
 	@BIN_DIR=$$($(SWIFT) build -c $(CONFIG) --arch $(ARCH) --show-bin-path); \
 	  cp -f $$BIN_DIR/$(APP_NAME) $(BUNDLE)/Contents/MacOS/$(APP_NAME); \
