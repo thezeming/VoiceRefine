@@ -8,16 +8,16 @@ import UserNotifications
 /// worse.
 enum NotificationDispatcher {
     private static let queue = DispatchQueue(label: "com.voicerefine.NotificationDispatcher")
-    nonisolated(unsafe) private static var authorized: Bool = false
     nonisolated(unsafe) private static var didRequestAuth: Bool = false
 
     static func requestAuthorization() {
-        queue.sync {
-            guard !didRequestAuth else { return }
+        let shouldRequest: Bool = queue.sync {
+            guard !didRequestAuth else { return false }
             didRequestAuth = true
+            return true
         }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
-            queue.sync { authorized = granted }
+        guard shouldRequest else { return }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, error in
             if let error {
                 NSLog("VoiceRefine: notification auth failed: \(error)")
             }
