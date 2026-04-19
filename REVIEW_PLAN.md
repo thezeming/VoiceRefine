@@ -18,37 +18,54 @@ single task without reading the others.
 
 ## ⚡ Quick start
 
-Single-agent, sequential mode. One fresh Claude Code session runs one
-task at a time; the human merges the PR between tasks. Simplest
-possible loop.
+Orchestrator + workers mode. One persistent Claude Code session runs as
+orchestrator; it spawns ephemeral worker sub-agents (via the `Agent`
+tool) to implement tasks. You review + merge PRs on GitHub. Multiple
+tasks can be in flight at once — throughput is limited by how fast you
+merge, not how fast you type.
 
-**Each new session:** open Claude Code in this repo and do:
-
-1. Identify what's already done:
-   ```bash
-   gh pr list --state merged --search "TASK" -L 30
-   ```
-2. Pick the lowest-numbered task whose **Blocked by** items are all
-   in that merged list. (Start with `TASK-0.1` on the very first run.)
-3. Implement it exactly per the worker prompt template in §"Agent
-   prompt template (worker)": stay inside the task's **Files** block,
-   respect the **Conventions** table, stop-and-ask on scope creep.
-4. Commit (`<kind>(task-X.Y): <summary>`), push, open a PR whose
-   description is the Acceptance checkboxes. Use `gh pr create`.
-5. Stop. Do **not** start another task — wait for the human to merge
-   and re-prompt you.
-
-**The exact prompt to paste each time:**
+**1. Start the orchestrator (once).** Open Claude Code in this repo
+and paste the **Appendix B** prompt verbatim. Then send:
 
 ```
-Read CLAUDE.md, PLAN.md, and REVIEW_PLAN.md in full.
-Then follow the steps in REVIEW_PLAN.md §"⚡ Quick start" — pick the
-next eligible task, implement it, open a PR, and stop. One task only.
+start next
 ```
 
-Between sessions the human does: review the PR, merge it (via
-GitHub web or `gh pr merge`), then start a new Claude Code session
-and re-paste the prompt.
+The orchestrator will check `gh pr list`, pick an eligible task, spawn
+a worker via the `Agent` tool, and report back a one-liner plus
+`STATE: <N merged / M in-flight / K eligible>`.
+
+**2. Queue more work in parallel.** Each additional `start next` assigns
+another eligible task to a fresh worker. The orchestrator tracks file
+overlaps and in-flight PRs — it won't double-book. Say `start next`
+two or three times in a row to fan out.
+
+**3. Review + merge PRs** on GitHub (or `gh pr merge --merge <N>`) as
+workers complete. You don't need to tell the orchestrator — every
+`start next` re-reads git state from scratch.
+
+**4. Between phases.** When every PR in a phase has merged, send:
+
+```
+checkpoint
+```
+
+The orchestrator runs the phase-checkpoint commands
+(§"Phase checkpoints"), then edits this file to mark the phase done
+and commits `docs(plan): complete phase-N`.
+
+**5. Other commands to the orchestrator.**
+
+| Say…              | It does…                                                      |
+|-------------------|---------------------------------------------------------------|
+| `start next`      | Pick one eligible task, spawn a worker, report.               |
+| `status`          | Print `gh pr list` + which tasks are eligible next.           |
+| `checkpoint`      | Run the phase-checkpoint suite for the most recently completed phase. |
+| `handle conflict` | Apply §"Conflict-resolution protocol" to two overlapping PRs. |
+
+**If the orchestrator session dies or auto-compacts**, start a fresh
+one with the same Appendix B prompt. Git is the source of truth; the
+new orchestrator rebuilds state from `gh pr list`.
 
 ---
 
