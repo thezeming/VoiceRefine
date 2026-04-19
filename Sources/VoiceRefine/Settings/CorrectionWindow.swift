@@ -136,13 +136,36 @@ private struct CorrectionView: View {
             sourceWavURL: DictationPipeline.lastWavURL
         )
 
-        // 3. Bring the target app forward, backspace over the previous
-        //    paste, and write the corrected text. Backspaces (not ⌘Z) so
-        //    terminals and other non-undo apps work too.
-        activateTargetApp()
-        PasteEngine().paste(trimmed, replacingPreviousLength: originalRefined.count)
-
+        // 3. Close the editor, return focus to the original target app,
+        //    then defer the paste so the main runloop has time to process
+        //    the activation event before backspaces + ⌘V fire. Two gotchas:
+        //
+        //    a. `app.activate()` (no params) bridges to the deprecated
+        //       `activate(options:)`, which silently no-ops in many
+        //       cross-app cases on macOS 14+. The macOS-14 API is
+        //       `activate(from:options:)` and `from: .current` is what
+        //       actually grants the activation.
+        //    b. A blocking `Thread.sleep` here prevents WindowServer from
+        //       processing the activation, so by the time keys fire,
+        //       focus is still on our editor. `DispatchQueue.main.asyncAfter`
+        //       yields the runloop instead.
+        let bundleID = targetBundleID
+        let toReplace = originalRefined.count
+        let textToPaste = trimmed
         dismiss()
+
+        if let bid = bundleID,
+           let app = NSWorkspace.shared.runningApplications
+               .first(where: { $0.bundleIdentifier == bid }) {
+            let activated = app.activate(from: .current, options: [])
+            NSLog("VoiceRefine: target activate(\(bid)) returned \(activated)")
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"
+            NSLog("VoiceRefine: CorrectLast paste — frontmost=\(front), expected=\(bundleID ?? "-")")
+            PasteEngine().paste(textToPaste, replacingPreviousLength: toReplace)
+        }
     }
 
     /// Merges `newTokens` into the `learnedGlossary` pref, deduplicating
@@ -170,18 +193,4 @@ private struct CorrectionView: View {
         defaults.set(combined.joined(separator: "\n"), forKey: PrefKey.learnedGlossary)
     }
 
-    /// Brings the original frontmost app back to front so the re-paste
-    /// lands in the right window, not in VoiceRefine's correction editor.
-    private func activateTargetApp() {
-        guard let bundleID = targetBundleID else { return }
-        if let app = NSWorkspace.shared.runningApplications
-            .first(where: { $0.bundleIdentifier == bundleID }) {
-            // `activate(options:)` is deprecated on macOS 14 (the flag is
-            // a no-op there). Use the modern `activate()` — always brings
-            // the target to front on macOS 14+.
-            app.activate()
-        }
-        // Give the app a moment to come forward before CGEvent posts ⌘V.
-        Thread.sleep(forTimeInterval: 0.15)
-    }
 }
