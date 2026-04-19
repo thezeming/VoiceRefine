@@ -10,7 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var accessibilityWindow: AccessibilityPermissionWindowController?
     private var onboardingWindow: OnboardingWindowController?
     private var hudController: HUDWindowController?
-    private var retryHotkey: RetryHotkey?
+    private var correctLastHotkey: CorrectLastHotkey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -61,28 +61,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pipeline.onTranscript = { [weak paste] text in
             paste?.paste(text)
         }
-        pipeline.onRetryTranscript = { [weak paste] text, prevLen in
-            // Retry: backspace over the previous paste then write the new
-            // text. ⌘Z would be cleaner in undo-aware apps but doesn't work
-            // in terminals; backspaces are universal.
-            paste?.paste(text, replacingPreviousLength: prevLen)
-        }
         pipeline.start()
         self.dictationPipeline = pipeline
 
-        // ⌃⌘R from any app — fires the same retry path the menu item uses.
-        // Re-activates the original target app first so the paste lands
-        // back in the right window.
-        retryHotkey = RetryHotkey { [weak pipeline, weak menuBar] in
-            guard let entry = TranscriptionHistory.shared.mostRecent() else { return }
-            if let bundleID = entry.frontmostAppBundleID,
-               let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first {
-                app.activate()
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                _ = menuBar // keep alive so the pulse timer stays valid
-                pipeline?.retryLastRefinement()
-            }
+        // ⌥⌘R from any app — opens "Correct last…" so the user can edit
+        // and re-paste without having to mouse to the menu bar.
+        correctLastHotkey = CorrectLastHotkey { [weak correctionController] in
+            correctionController?.present()
         }
 
         NotificationDispatcher.requestAuthorization()

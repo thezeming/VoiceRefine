@@ -34,6 +34,7 @@ final class CorrectionWindowController: NSWindowController, NSWindowDelegate {
 private struct CorrectionView: View {
     @State private var editedText: String = ""
     @State private var originalRefined: String = ""
+    @State private var rawTranscript: String = ""
     @State private var targetBundleID: String? = nil
 
     var body: some View {
@@ -72,6 +73,7 @@ private struct CorrectionView: View {
         if let entry = TranscriptionHistory.shared.mostRecent() {
             editedText = entry.refined
             originalRefined = entry.refined
+            rawTranscript = entry.raw
             targetBundleID = entry.frontmostAppBundleID
         }
     }
@@ -81,11 +83,25 @@ private struct CorrectionView: View {
         guard !trimmed.isEmpty else { return }
 
         // 1. Compute new tokens and append to learned glossary.
-        appendLearnedGlossary(TokenDiff.additions(old: originalRefined, new: trimmed))
+        let additions = TokenDiff.additions(old: originalRefined, new: trimmed)
+        appendLearnedGlossary(additions)
 
-        // 2. Bring the target app forward and re-paste.
+        // 2. Persist the raw → original-refined → corrected triple (and
+        //    the source WAV when available) for offline analysis.
+        CorrectionLog.append(
+            raw: rawTranscript,
+            originalRefined: originalRefined,
+            correctedRefined: trimmed,
+            glossaryAdditions: additions,
+            frontmostAppBundleID: targetBundleID,
+            sourceWavURL: DictationPipeline.lastWavURL
+        )
+
+        // 3. Bring the target app forward, backspace over the previous
+        //    paste, and write the corrected text. Backspaces (not ⌘Z) so
+        //    terminals and other non-undo apps work too.
         activateTargetApp()
-        PasteEngine().paste(trimmed)
+        PasteEngine().paste(trimmed, replacingPreviousLength: originalRefined.count)
 
         closeWindow()
     }

@@ -41,9 +41,6 @@ final class DictationPipeline {
     private var hotkeyManager: HotkeyManager?
     private var maxDurationCutoff: DispatchWorkItem?
     private var currentTranscriptionTask: Task<Void, Never>?
-    /// True while a retry-only refinement run is in progress. Prevents the
-    /// hotkey path and retry path from colliding.
-    private var isRetrying: Bool = false
 
     private var refinementFailureCounts: [RefinementProviderID: Int] = [:]
     /// When non-nil, `resolveRefinement` returns the NoOp provider instead of
@@ -60,11 +57,6 @@ final class DictationPipeline {
     /// Fires with the final (refined) transcript once the full pipeline
     /// completes. Phase 5 hooks the paste engine here.
     var onTranscript: (@MainActor (String) -> Void)?
-    /// Called by the retry-last path instead of `onTranscript`. The Int
-    /// is the previous refined text's grapheme count — AppDelegate uses
-    /// it to backspace exactly that many characters before pasting the
-    /// corrected version.
-    var onRetryTranscript: (@MainActor (String, Int) -> Void)?
     /// Fires with live partial transcripts during Apple Speech streaming.
     /// Always called on the main thread. Throttled to ~5 Hz (200 ms minimum
     /// between emissions). WhisperKit and cloud providers never fire this.
@@ -236,67 +228,6 @@ final class DictationPipeline {
                 if Task.isCancelled { return }
                 NSLog("VoiceRefine: transcription error — \(error)")
                 self.flashError("Transcription failed.")
-            }
-        }
-    }
-
-    // MARK: - Retry-last (refinement-only, no new recording)
-
-    /// Re-runs refinement on the most-recent raw transcript and pastes. The
-    /// caller should re-activate the target app first so the paste lands in
-    /// the right window.
-    ///
-    /// No-ops when a recording or retry is already in flight — never
-    /// double-dispatches. Must be called on the main actor.
-    @MainActor
-    func retryLastRefinement() {
-        guard state == .idle, !isRetrying else {
-            NSLog("VoiceRefine: retryLastRefinement ignored — busy (state=\(state), isRetrying=\(isRetrying))")
-            return
-        }
-        guard let entry = TranscriptionHistory.shared.mostRecent() else {
-            NSLog("VoiceRefine: retryLastRefinement ignored — history empty")
-            return
-        }
-
-        isRetrying = true
-        transition(to: .processing)
-
-        let raw = entry.raw
-        let context = entry.context ?? .empty
-        let bundleID = entry.frontmostAppBundleID
-
-        currentTranscriptionTask = Task { [weak self] in
-            guard let self else { return }
-            let refined = await self.refine(raw: raw, context: context, bundleID: bundleID)
-            if Task.isCancelled {
-                await MainActor.run {
-                    self.isRetrying = false
-                    self.transition(to: .idle)
-                }
-                return
-            }
-            NSLog("VoiceRefine: retry refined transcript — \(refined)")
-            await MainActor.run {
-                TranscriptionHistory.shared.record(
-                    raw: raw,
-                    refined: refined,
-                    context: context,
-                    frontmostAppBundleID: bundleID
-                )
-                // Retry path uses the replace-previous variant so the
-                // corrected text overwrites the original paste. The
-                // previous length is the captured `entry.refined`.count
-                // so the backspaces match exactly what was pasted.
-                if let onRetry = self.onRetryTranscript {
-                    onRetry(refined, entry.refined.count)
-                } else {
-                    self.onTranscript?(refined)
-                }
-                self.isRetrying = false
-                if self.state == .processing {
-                    self.transition(to: .idle)
-                }
             }
         }
     }

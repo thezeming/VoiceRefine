@@ -6,13 +6,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private let onShowSettings: () -> Void
     private let onShowOnboarding: () -> Void
     private let onShowCorrection: () -> Void
-    /// Weak ref so the Retry-last action can drive the pipeline without a
-    /// retain cycle (AppDelegate owns both).
+    /// Weak ref so menu actions can read pipeline state (e.g. for the
+    /// "Re-enable refinement" toggle) without a retain cycle — AppDelegate
+    /// owns both this controller and the pipeline.
     private weak var pipeline: DictationPipeline?
 
-    /// Weak refs so we can toggle enabled state when the menu opens.
+    /// Weak ref so we can toggle the Correct-last item's enabled state.
     private weak var correctLastItem: NSMenuItem?
-    private weak var retryLastItem: NSMenuItem?
 
     // MARK: - Processing pulse
 
@@ -115,7 +115,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
 
-        // "Correct last…" — near the top; disabled until a paste has happened.
+        // "Correct last…" — disabled until a paste has happened. ⌥⌘R
+        // global hotkey wires through the same path.
         let correctItem = NSMenuItem(
             title: "Correct last…",
             action: #selector(showCorrection),
@@ -125,18 +126,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         correctItem.isEnabled = false
         menu.addItem(correctItem)
         correctLastItem = correctItem
-
-        // "Retry last" — re-runs refinement on the most-recent raw transcript
-        // and pastes. Disabled when history empty or pipeline busy.
-        let retryItem = NSMenuItem(
-            title: "Retry last",
-            action: #selector(retryLast),
-            keyEquivalent: ""
-        )
-        retryItem.target = self
-        retryItem.isEnabled = false
-        menu.addItem(retryItem)
-        retryLastItem = retryItem
 
         menu.addItem(.separator())
 
@@ -185,10 +174,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     @MainActor
     func menuWillOpen(_ menu: NSMenu) {
         // Update enabled state lazily — no KVO or notification plumbing.
-        let hasHistory = !TranscriptionHistory.shared.entries.isEmpty
-        correctLastItem?.isEnabled = hasHistory
-        let pipelineIdle = pipeline.map { $0.state == .idle } ?? false
-        retryLastItem?.isEnabled = hasHistory && pipelineIdle
+        correctLastItem?.isEnabled = !TranscriptionHistory.shared.entries.isEmpty
         if let item = menu.item(withTag: Tag.reEnableRefinement) {
             item.isEnabled = pipeline?.hasRefinementOverride ?? false
         }
@@ -206,25 +192,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func showCorrection() {
         onShowCorrection()
-    }
-
-    @MainActor
-    @objc private func retryLast() {
-        guard let entry = TranscriptionHistory.shared.mostRecent() else { return }
-
-        // Re-activate the recorded target app so the paste lands in the
-        // right window. Best-effort: if the app is no longer running, fall
-        // through and paste into whatever is currently frontmost.
-        if let bundleID = entry.frontmostAppBundleID,
-           let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first {
-            app.activate()
-        }
-
-        // 150 ms delay lets the target app come forward before the
-        // pipeline posts ⌘V.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            self?.pipeline?.retryLastRefinement()
-        }
     }
 
     @objc private func reEnableRefinement() {

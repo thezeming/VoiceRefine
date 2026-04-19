@@ -1,14 +1,16 @@
 import AppKit
 
-/// Global ⌃R chord for "Retry last refinement".
+/// Global ⌥⌘R chord that opens the "Correct last…" window from any app —
+/// equivalent to picking the menu item, just without having to mouse to
+/// the menu bar.
 ///
-/// Caveat: ⌃R is the standard reverse-i-search shortcut in bash/zsh,
-/// "redo" in vim, and "isearch-backward" in emacs. We can't suppress
-/// global events, so the terminal/editor still receives ⌃R AND retry
-/// fires whenever the session has prior dictation history. Switch to
-/// ⌥⌘R or ⌃⌘R here if that becomes a problem.
+/// ⌥⌘R is a "non-typing, non-action" chord on macOS — Option+Command
+/// modifiers don't combine with R into any shipped system shortcut, and
+/// Option alone doesn't type a glyph when Command is also held. Safer
+/// than ⌘R (browser reload), ⌥R (types ®), or ⌃R (terminal reverse-i-
+/// search).
 @MainActor
-final class RetryHotkey {
+final class CorrectLastHotkey {
     private let onTrigger: @MainActor () -> Void
 
     nonisolated(unsafe) private var globalMonitor: Any?
@@ -33,7 +35,7 @@ final class RetryHotkey {
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             // Returning the event lets the original keystroke continue to
-            // the focused responder. We never want to swallow ⌃⌘R for any
+            // the focused responder. We never want to swallow ⌥⌘R for any
             // other app — only piggy-back on the chord.
             self?.handle(event)
             return event
@@ -43,9 +45,9 @@ final class RetryHotkey {
     private func handle(_ event: NSEvent) {
         guard event.keyCode == Self.rKeyCode else { return }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        // Exact-match: ⌃ only — no shift, option, command, capslock, function.
-        // Picky on purpose so chords like ⌃⌘R don't fire by accident.
-        guard flags == .control else { return }
+        let required: NSEvent.ModifierFlags = [.option, .command]
+        // Exact-match: ⌥⌘ only — no shift, control, capslock, function.
+        guard flags == required else { return }
         onTrigger()
     }
 }
