@@ -74,8 +74,19 @@ enum PrefDefaults {
     """
 
     static func registerAll() {
+        // Fresh-install default: Apple SpeechAnalyzer on macOS 26+ (model
+        // managed by the OS — zero bundled asset), WhisperKit elsewhere.
+        // UserDefaults.register() only fires when the key is unset, so
+        // existing users keep whatever they already chose.
+        let defaultTranscription: String = {
+            if #available(macOS 26, *) {
+                return TranscriptionProviderID.appleSpeech.rawValue
+            }
+            return TranscriptionProviderID.whisperKit.rawValue
+        }()
+
         var defaults: [String: Any] = [
-            PrefKey.selectedTranscriptionProvider: TranscriptionProviderID.whisperKit.rawValue,
+            PrefKey.selectedTranscriptionProvider: defaultTranscription,
             PrefKey.selectedRefinementProvider:    RefinementProviderID.ollama.rawValue,
 
             PrefKey.glossary:               "",

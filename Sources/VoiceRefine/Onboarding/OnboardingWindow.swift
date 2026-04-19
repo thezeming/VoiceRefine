@@ -46,11 +46,22 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
 private struct OnboardingView: View {
     let onFinish: () -> Void
 
+    @AppStorage(PrefKey.selectedTranscriptionProvider)
+    private var transcriptionProviderRaw: String = TranscriptionProviderID.whisperKit.rawValue
+
     @State private var micStatus: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .audio)
     @State private var axGranted: Bool = AccessibilityPermission.isTrusted
     @State private var whisperModel: String = UserDefaults.standard.string(forKey: TranscriptionProviderID.whisperKit.modelPreferenceKey)
         ?? TranscriptionProviderID.whisperKit.defaultModel
     @State private var whisperDownloaded: Bool = false
+
+    @State private var appleSpeechLocaleID: String = UserDefaults.standard.string(forKey: TranscriptionProviderID.appleSpeech.modelPreferenceKey)
+        ?? TranscriptionProviderID.appleSpeech.defaultModel
+    @State private var appleSpeechLocaleInstalled: Bool = false
+    @State private var isInstallingAppleSpeechLocale: Bool = false
+    @State private var appleSpeechInstallProgress: Double = 0
+    @State private var appleSpeechInstallMessage: String = ""
+
     @State private var ollamaState: OllamaState = .notInstalled
     @State private var ollamaInstalledModels: [String] = []
     @State private var selectedOllamaModel: String = UserDefaults.standard.string(forKey: RefinementProviderID.ollama.modelPreferenceKey)
@@ -59,10 +70,24 @@ private struct OnboardingView: View {
     @State private var isPullingOllama: Bool = false
     @State private var pullMessage: String = ""
 
+    private var transcriptionProvider: TranscriptionProviderID {
+        TranscriptionProviderID(rawValue: transcriptionProviderRaw) ?? .whisperKit
+    }
+
+    private var transcriptionReady: Bool {
+        switch transcriptionProvider {
+        case .appleSpeech:   return appleSpeechLocaleInstalled
+        case .whisperKit:    return whisperDownloaded
+        // Cloud transcribers aren't fetched ahead of time — they're ready
+        // as long as a key is set, but onboarding doesn't collect keys.
+        case .groq, .openAIWhisper: return true
+        }
+    }
+
     private var allGood: Bool {
         micStatus == .authorized
             && axGranted
-            && whisperDownloaded
+            && transcriptionReady
             && ollamaState == .running
             && ollamaInstalledModels.contains(selectedOllamaModel)
     }
@@ -91,12 +116,7 @@ private struct OnboardingView: View {
                     action: { AccessibilityPermission.openSystemSettings() }
                 )
 
-                ChecklistRow(
-                    title: "Whisper model: \(whisperModel)",
-                    status: whisperDownloaded ? .ok("downloaded") : .todo("first recording will fetch it (~142 MB)"),
-                    actionTitle: nil,
-                    action: {}
-                )
+                transcriptionChecklistSection
 
                 ChecklistRow(
                     title: ollamaRowTitle,
@@ -167,6 +187,87 @@ private struct OnboardingView: View {
         if allGood { return "All set — refinement pipeline will run locally." }
         if canProceedLocally { return "Core features ready; Ollama optional." }
         return "Complete mic + accessibility to start dictating."
+    }
+
+    // MARK: - Transcription row (provider-aware)
+
+    @ViewBuilder
+    private var transcriptionChecklistSection: some View {
+        switch transcriptionProvider {
+        case .appleSpeech:
+            ChecklistRow(
+                title: "Apple Speech locale: \(appleSpeechLocaleID)",
+                status: appleSpeechLocaleInstalled
+                    ? .ok("installed — on-device, managed by macOS")
+                    : .todo("on-device asset — download once, then offline"),
+                actionTitle: appleSpeechLocaleInstalled
+                    ? nil
+                    : (isInstallingAppleSpeechLocale ? "Downloading…" : "Download"),
+                action: { installAppleSpeechLocaleTapped() }
+            )
+            if isInstallingAppleSpeechLocale || (!appleSpeechInstallMessage.isEmpty && !appleSpeechLocaleInstalled) {
+                VStack(alignment: .leading, spacing: 4) {
+                    if appleSpeechInstallProgress > 0 {
+                        ProgressView(value: appleSpeechInstallProgress)
+                    } else if isInstallingAppleSpeechLocale {
+                        ProgressView().progressViewStyle(.linear)
+                    }
+                    Text(appleSpeechInstallMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.leading, 28)
+            }
+        case .whisperKit:
+            ChecklistRow(
+                title: "Whisper model: \(whisperModel)",
+                status: whisperDownloaded ? .ok("downloaded") : .todo("first recording will fetch it (~142 MB)"),
+                actionTitle: nil,
+                action: {}
+            )
+        case .groq, .openAIWhisper:
+            ChecklistRow(
+                title: "Transcription: \(transcriptionProvider.displayName)",
+                status: .skippable("add API key in Settings › Transcription"),
+                actionTitle: nil,
+                action: {}
+            )
+        }
+    }
+
+    private func installAppleSpeechLocaleTapped() {
+        guard !isInstallingAppleSpeechLocale, !appleSpeechLocaleInstalled else { return }
+        guard #available(macOS 26, *) else { return }
+
+        let id = appleSpeechLocaleID
+        isInstallingAppleSpeechLocale = true
+        appleSpeechInstallProgress = 0
+        appleSpeechInstallMessage = "Starting download…"
+
+        Task {
+            do {
+                try await AppleSpeechAssetManager.installLocale(id) { frac, msg in
+                    Task { @MainActor in
+                        guard id == appleSpeechLocaleID else { return }
+                        appleSpeechInstallProgress = frac
+                        appleSpeechInstallMessage = msg
+                    }
+                }
+                await MainActor.run {
+                    guard id == appleSpeechLocaleID else { return }
+                    isInstallingAppleSpeechLocale = false
+                    appleSpeechLocaleInstalled = true
+                    appleSpeechInstallProgress = 1
+                    appleSpeechInstallMessage = "Installed \(id)."
+                }
+            } catch {
+                await MainActor.run {
+                    guard id == appleSpeechLocaleID else { return }
+                    isInstallingAppleSpeechLocale = false
+                    appleSpeechInstallMessage = "Install failed: \(error.localizedDescription)"
+                }
+            }
+        }
     }
 
     // MARK: - Ollama row helpers
@@ -261,6 +362,17 @@ private struct OnboardingView: View {
         micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         axGranted = AccessibilityPermission.isTrusted
         whisperDownloaded = WhisperKitProvider.isModelDownloaded(whisperModel)
+
+        // Apple Speech: only ask the framework when the provider is active
+        // AND we're on an OS that has the API. Doing it unconditionally
+        // would either trap on pre-26 OSes (symbol missing) or waste an
+        // async call for users who never touch the provider.
+        if transcriptionProvider == .appleSpeech {
+            if #available(macOS 26, *) {
+                appleSpeechLocaleInstalled = await AppleSpeechAssetManager.isInstalled(localeID: appleSpeechLocaleID)
+            }
+        }
+
         ollamaState = await OllamaDetector.shared.check()
         if ollamaState == .running {
             ollamaInstalledModels = await OllamaDetector.shared.listInstalledModels()
