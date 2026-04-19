@@ -12,10 +12,10 @@ import AppKit
 final class HUDWindowController {
 
     private enum Layout {
-        static let windowSide: CGFloat   = 64
+        static let windowSide: CGFloat   = 36
         static let bottomMargin: CGFloat = 80
-        static let cornerRadius: CGFloat = 14
-        static let glyphPointSize: CGFloat = 28
+        static let cornerRadius: CGFloat = 9
+        static let glyphPointSize: CGFloat = 16
     }
 
     private var window: NSPanel?

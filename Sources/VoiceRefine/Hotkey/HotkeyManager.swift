@@ -298,22 +298,24 @@ final class HotkeyManager {
 
     // MARK: - Fn key hold
 
-    /// Fires `onPress` on Fn-down, `onRelease` on Fn-up. Fn can co-appear
-    /// with `.numericPad` on some keyboards; we only require `.function` to
-    /// be present and allow no other device-independent flag (numericPad is
-    /// not in deviceIndependentFlagsMask, so it doesn't interfere).
+    /// Fires `onPress` on Fn-down, `onRelease` on Fn-up. Fires only when
+    /// Fn is the **sole** modifier — Fn+anything else cancels.
+    ///
+    /// Bug-fix history: `.function` IS in `.deviceIndependentFlagsMask`
+    /// (bit 0x00800000), so the previous "purelyFn = diFlags.isEmpty"
+    /// check evaluated to false even when only Fn was held — onPress
+    /// never fired. The fix subtracts `.function` before the empty
+    /// check.
     private func handleFnKey(_ event: NSEvent) {
-        // Use the raw flags to detect Fn, then mask to device-independent
-        // bits to check no other meaningful modifier is active.
-        let rawFlags = event.modifierFlags
-        let fnDown   = rawFlags.contains(.function)
-        // Device-independent flags excluding Fn (which is not in that mask).
-        let diFlags  = rawFlags.intersection(.deviceIndependentFlagsMask)
-        // Only allow empty device-independent flags when Fn is active
-        // (i.e. Fn alone, not Fn+Shift, Fn+Command, etc.).
-        let purelyFn = diFlags.isEmpty
+        let rawFlags  = event.modifierFlags
+        let fnDown    = rawFlags.contains(.function)
+        // Strip Fn out before checking that no other modifier is held.
+        let otherMods = rawFlags
+            .intersection(.deviceIndependentFlagsMask)
+            .subtracting(.function)
+        let purelyFn  = otherMods.isEmpty
 
-        defer { previousFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask) }
+        defer { previousFlags = rawFlags.intersection(.deviceIndependentFlagsMask) }
 
         if !holdActive && fnDown && purelyFn {
             holdActive = true

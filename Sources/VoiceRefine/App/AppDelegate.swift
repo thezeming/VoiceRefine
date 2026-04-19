@@ -45,15 +45,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBar.setPipeline(pipeline)
         pipeline.onStateChange = { [weak menuBar, weak hud] state in
             menuBar?.apply(state)
+            // Hide as soon as recording ends — user wants the HUD gone
+            // the moment they release the hotkey, not after refinement
+            // and paste finish.
             switch state {
             case .recording:
                 hud?.show()
-            case .idle, .error:
+            case .idle, .error, .processing:
                 hud?.hide()
-            case .processing:
-                // Keep the HUD visible during processing so the final
-                // partial (if any) stays readable while refinement runs.
-                break
             }
         }
         pipeline.onPartialTranscript = { [weak hud] text in
@@ -62,9 +61,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pipeline.onTranscript = { [weak paste] text in
             paste?.paste(text)
         }
-        pipeline.onRetryTranscript = { [weak paste] text in
-            // Retry: undo the previous paste then write the corrected text.
-            paste?.paste(text, replacingPrevious: true)
+        pipeline.onRetryTranscript = { [weak paste] text, prevLen in
+            // Retry: backspace over the previous paste then write the new
+            // text. ⌘Z would be cleaner in undo-aware apps but doesn't work
+            // in terminals; backspaces are universal.
+            paste?.paste(text, replacingPreviousLength: prevLen)
         }
         pipeline.start()
         self.dictationPipeline = pipeline
