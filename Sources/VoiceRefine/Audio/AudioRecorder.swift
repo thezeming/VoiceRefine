@@ -77,10 +77,8 @@ final class AudioRecorder {
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         isRecording = false
-        // Tap is already removed; reading the buffer here is safe but we still
-        // go through the lock for correctness (a queued tap delivery could
-        // theoretically be in-flight just before removeTap returns).
-        return bufferLock.withLock { $0 }
+        let raw = bufferLock.withLock { $0 }
+        return AudioVAD.trim(raw)
     }
 
     // MARK: - Introspection

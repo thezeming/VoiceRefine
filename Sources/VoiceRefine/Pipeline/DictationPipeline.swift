@@ -126,12 +126,15 @@ final class DictationPipeline {
         guard state == .recording else { return }
         cancelMaxDurationCutoff()
 
-        let duration = recorder.duration
         let audio = recorder.stop()
 
         // Play stop chirp *after* the mic tap is removed so it isn't
         // tacked onto the recorded buffer.
         SoundEffect.stop.play()
+
+        // Derive duration from the VAD-trimmed byte count (Int16 = 2 bytes/sample,
+        // 16 000 samples/s) so the gate reflects voiced content, not total wall time.
+        let duration = Double(audio.count / 2) / 16_000.0
 
         if duration < Self.minDuration {
             NSLog("VoiceRefine: discarded \(String(format: "%.3fs", duration)) recording (below \(Self.minDuration)s floor)")
