@@ -53,6 +53,15 @@ final class WhisperKitProvider: TranscriptionProvider {
         return (contents?.count ?? 0) > 0
     }
 
+    /// Eagerly fetches + loads `model` so the first real dictation isn't
+    /// delayed by a ~150 MB download and a CoreML compile. Used by the
+    /// Transcription tab's "Download" button; safe to call when the model
+    /// is already present (cheap re-load).
+    static func prefetch(model: String) async throws {
+        let provider = WhisperKitProvider()
+        try await provider.ensureLoaded(model: model)
+    }
+
     // MARK: - Transcription
 
     func transcribe(audio: Data, model: String) async throws -> String {

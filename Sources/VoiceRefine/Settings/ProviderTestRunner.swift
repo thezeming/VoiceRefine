@@ -74,10 +74,39 @@ enum ProviderTestRunner {
     /// transcription provider. WhisperKit should produce an empty (or
     /// near-empty) result quickly once loaded; cloud providers should
     /// return a 2xx response.
+    ///
+    /// Pre-flight: for local providers that ship assets separately
+    /// (WhisperKit, Apple Speech), refuse to run if the asset isn't
+    /// installed. Otherwise the Test button silently kicks off a
+    /// multi-hundred-MB download with no progress indication.
     static func testTranscription(_ id: TranscriptionProviderID) async -> ProviderTestOutcome {
         let start = Date()
         let silencePCM = Data(count: 16_000 * MemoryLayout<Int16>.size) // 1 s of zeros
         let model = UserDefaults.standard.string(forKey: id.modelPreferenceKey) ?? id.defaultModel
+
+        switch id {
+        case .whisperKit:
+            if !WhisperKitProvider.isModelDownloaded(model) {
+                return ProviderTestOutcome(
+                    isError: true,
+                    latency: 0,
+                    message: "WhisperKit model '\(model)' isn't downloaded yet. Use the Download button above first."
+                )
+            }
+        case .appleSpeech:
+            if #available(macOS 26, *) {
+                if !(await AppleSpeechAssetManager.isInstalled(localeID: model)) {
+                    return ProviderTestOutcome(
+                        isError: true,
+                        latency: 0,
+                        message: "Apple Speech locale '\(model)' isn't installed yet. Use the Download button above first."
+                    )
+                }
+            }
+        case .groq, .openAIWhisper:
+            break
+        }
+
         do {
             let provider = TranscriptionProviderFactory.make(id)
             let text = try await provider.transcribe(audio: silencePCM, model: model)

@@ -12,10 +12,12 @@ enum NotificationDispatcher {
     nonisolated(unsafe) private static var didRequestAuth: Bool = false
 
     static func requestAuthorization() {
-        queue.sync {
-            guard !didRequestAuth else { return }
+        let shouldRequest: Bool = queue.sync {
+            guard !didRequestAuth else { return false }
             didRequestAuth = true
+            return true
         }
+        guard shouldRequest else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
             queue.sync { authorized = granted }
             if let error {
