@@ -143,11 +143,19 @@ enum ContextGatherer {
     /// `String.count` here would produce off-by-N errors on any document
     /// containing emoji or combining characters.
     ///
+    /// Strategy:
+    ///   1. Try the precise range-based read (Cocoa text views, Terminal,
+    ///      most native Mac apps).
+    ///   2. If the focused element doesn't expose a selection range — the
+    ///      common Electron / web case (Claude desktop, Slack, Discord,
+    ///      VS Code text inputs, browser textareas) — fall back to the
+    ///      full `kAXValueAttribute` and assume the caret is at the end.
+    ///      That assumption matches the dominant push-to-talk workflow:
+    ///      the user types something, then triggers dictation to continue.
+    ///
     /// Returns nil if:
     ///   - the focused element is a secure text field (password box),
-    ///   - there is no selection/caret attribute (non-text element),
-    ///   - the cursor is at offset 0 (nothing before it),
-    ///   - neither the parametric nor the full-value AX read returns text.
+    ///   - neither path yields a non-empty value.
     private static func textBeforeCursor(for element: AXUIElement, charBudget: Int) -> String? {
         // Secure-field guard: role OR subrole can be AXSecureTextField.
         if let roleRef = copyAttribute(element, kAXRoleAttribute as CFString),
@@ -161,6 +169,17 @@ enum ContextGatherer {
             return nil
         }
 
+        if let s = textBeforeCursorViaRange(element: element, charBudget: charBudget) {
+            return s
+        }
+        return textBeforeCursorAssumingEnd(element: element, charBudget: charBudget)
+    }
+
+    /// Precise read using `kAXSelectedTextRangeAttribute`. Returns nil if
+    /// the element doesn't expose the selection range (Electron / web),
+    /// the cursor is at offset 0, or both the parametric and full-value
+    /// reads come back empty.
+    private static func textBeforeCursorViaRange(element: AXUIElement, charBudget: Int) -> String? {
         // Caret / selection range in UTF-16 units.
         guard let rangeRef = copyAttribute(element, kAXSelectedTextRangeAttribute as CFString) else {
             return nil
@@ -203,6 +222,26 @@ enum ContextGatherer {
               range.location + range.length <= nsFull.length else {
             return nil
         }
+        let sliced = nsFull.substring(with: range)
+        return finaliseBeforeCursor(prefix: sliced, charBudget: charBudget)
+    }
+
+    /// Electron / web fallback: read `kAXValueAttribute` and take the tail
+    /// `charBudget` UTF-16 units, treating the caret as if it sits at the
+    /// end of the value. Wrong when the user has clicked into the middle
+    /// of an existing field, but right in the overwhelmingly common case
+    /// of "I just typed; now I'm dictating to continue."
+    private static func textBeforeCursorAssumingEnd(element: AXUIElement, charBudget: Int) -> String? {
+        guard let valueRef = copyAttribute(element, kAXValueAttribute as CFString),
+              let full = valueRef as? String, !full.isEmpty else {
+            return nil
+        }
+        let nsFull = full as NSString
+        guard nsFull.length > 0 else { return nil }
+
+        let budgetUTF16 = min(nsFull.length, charBudget)
+        let start = nsFull.length - budgetUTF16
+        let range = NSRange(location: start, length: budgetUTF16)
         let sliced = nsFull.substring(with: range)
         return finaliseBeforeCursor(prefix: sliced, charBudget: charBudget)
     }
