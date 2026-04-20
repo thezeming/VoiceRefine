@@ -4,13 +4,11 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarController: MenuBarController?
     private var settingsWindowController: SettingsWindowController?
-    private var correctionWindowController: CorrectionWindowController?
     private var dictationPipeline: DictationPipeline?
     private var pasteEngine: PasteEngine?
     private var accessibilityWindow: AccessibilityPermissionWindowController?
     private var onboardingWindow: OnboardingWindowController?
     private var hudController: HUDWindowController?
-    private var correctLastHotkey: CorrectLastHotkey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -19,18 +17,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsController = SettingsWindowController()
         self.settingsWindowController = settingsController
 
-        let correctionController = CorrectionWindowController()
-        self.correctionWindowController = correctionController
-
         let menuBar = MenuBarController(
             onShowSettings: { [weak settingsController] in
                 settingsController?.present()
             },
             onShowOnboarding: { [weak self] in
                 self?.showOnboarding(force: true)
-            },
-            onShowCorrection: { [weak correctionController] in
-                correctionController?.present()
             }
         )
         self.menuBarController = menuBar
@@ -63,12 +55,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         pipeline.start()
         self.dictationPipeline = pipeline
-
-        // ⌥⌘R from any app — opens "Correct last…" so the user can edit
-        // and re-paste without having to mouse to the menu bar.
-        correctLastHotkey = CorrectLastHotkey { [weak correctionController] in
-            correctionController?.present()
-        }
 
         NotificationDispatcher.requestAuthorization()
 

@@ -18,11 +18,6 @@ enum PrefKey {
 
     static let disableDiagnosticLogs        = "disableDiagnosticLogs"
 
-    /// Newline-separated words/phrases accumulated by the "Correct last…"
-    /// flow. Stored in the same style as `glossary` (plain newline-delimited
-    /// text). Wiring into refinement context is a follow-up task.
-    static let learnedGlossary              = "learnedGlossary"
-
     /// JSON-encoded `[String: String]` — keys are bundle IDs, values are
     /// per-app system prompt overrides. Empty string = no overrides.
     static let perAppSystemPrompts          = "perAppSystemPrompts"
@@ -137,8 +132,6 @@ enum PrefDefaults {
             PrefKey.contextBeforeCursorCharLimit: 1500,
 
             PrefKey.disableDiagnosticLogs:        false,
-
-            PrefKey.learnedGlossary:              "",
 
             PrefKey.perAppSystemPrompts:          "",
             PrefKey.hotkeyGesture:                HotkeyGesture.doubleTapShift.rawValue,

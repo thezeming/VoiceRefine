@@ -5,14 +5,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private let statusItem: NSStatusItem
     private let onShowSettings: () -> Void
     private let onShowOnboarding: () -> Void
-    private let onShowCorrection: () -> Void
     /// Weak ref so menu actions can read pipeline state (e.g. for the
     /// "Re-enable refinement" toggle) without a retain cycle — AppDelegate
     /// owns both this controller and the pipeline.
     private weak var pipeline: DictationPipeline?
-
-    /// Weak ref so we can toggle the Correct-last item's enabled state.
-    private weak var correctLastItem: NSMenuItem?
 
     // MARK: - Processing pulse
 
@@ -34,11 +30,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     init(onShowSettings: @escaping () -> Void,
          onShowOnboarding: @escaping () -> Void,
-         onShowCorrection: @escaping () -> Void,
          pipeline: DictationPipeline? = nil) {
         self.onShowSettings = onShowSettings
         self.onShowOnboarding = onShowOnboarding
-        self.onShowCorrection = onShowCorrection
         self.pipeline = pipeline
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
@@ -115,20 +109,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
 
-        // "Correct last…" — disabled until a paste has happened. ⌥⌘R
-        // global hotkey wires through the same path.
-        let correctItem = NSMenuItem(
-            title: "Correct last…",
-            action: #selector(showCorrection),
-            keyEquivalent: ""
-        )
-        correctItem.target = self
-        correctItem.isEnabled = false
-        menu.addItem(correctItem)
-        correctLastItem = correctItem
-
-        menu.addItem(.separator())
-
         let settingsItem = NSMenuItem(
             title: "Settings…",
             action: #selector(showSettings),
@@ -174,7 +154,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     @MainActor
     func menuWillOpen(_ menu: NSMenu) {
         // Update enabled state lazily — no KVO or notification plumbing.
-        correctLastItem?.isEnabled = !TranscriptionHistory.shared.entries.isEmpty
         if let item = menu.item(withTag: Tag.reEnableRefinement) {
             item.isEnabled = pipeline?.hasRefinementOverride ?? false
         }
@@ -188,10 +167,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func showOnboarding() {
         onShowOnboarding()
-    }
-
-    @objc private func showCorrection() {
-        onShowCorrection()
     }
 
     @objc private func reEnableRefinement() {

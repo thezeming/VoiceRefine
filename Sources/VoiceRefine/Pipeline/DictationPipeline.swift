@@ -35,8 +35,8 @@ final class DictationPipeline {
     /// Bundle ID of the frontmost app captured at `beginRecording()`. Stored
     /// separately from `pendingContext` because `RefinementContext` carries
     /// only the localized app name (for LLM use), not the bundle id —
-    /// needed for re-activation (retry / correct-last) AND per-app
-    /// system-prompt overrides in `refine(raw:context:bundleID:)`.
+    /// needed for per-app system-prompt overrides in
+    /// `refine(raw:context:bundleID:)`.
     private var pendingBundleID: String? = nil
     private var hotkeyManager: HotkeyManager?
     private var maxDurationCutoff: DispatchWorkItem?
@@ -92,19 +92,6 @@ final class DictationPipeline {
         currentTranscriptionTask = nil
         _ = recorder.stop()
         transition(to: .idle)
-    }
-
-    // MARK: - Paths
-
-    static var cacheDirectory: URL {
-        FileManager.default
-            .urls(for: .cachesDirectory, in: .userDomainMask)
-            .first!
-            .appendingPathComponent("VoiceRefine", isDirectory: true)
-    }
-
-    static var lastWavURL: URL {
-        cacheDirectory.appendingPathComponent("last.wav")
     }
 
     // MARK: - Recording flow
@@ -168,13 +155,7 @@ final class DictationPipeline {
             return
         }
 
-        do {
-            try recorder.writeWAV(to: Self.lastWavURL)
-            NSLog("VoiceRefine: recording saved — \(audio.count) bytes, \(String(format: "%.2fs", duration)), wrote \(Self.lastWavURL.path)")
-        } catch {
-            NSLog("VoiceRefine: failed to write WAV: \(error)")
-            // Non-fatal — continue to transcription.
-        }
+        NSLog("VoiceRefine: recording captured — \(audio.count) bytes, \(String(format: "%.2fs", duration))")
 
         transition(to: .processing)
 
@@ -225,15 +206,6 @@ final class DictationPipeline {
                     NSLog("VoiceRefine: join-adjusted transcript — \(final)")
                 }
 
-                // Already on @MainActor — no hop needed. Record the
-                // joined text so the correct-last flow replays exactly
-                // what was pasted.
-                TranscriptionHistory.shared.record(
-                    raw: raw,
-                    refined: final,
-                    context: context,
-                    frontmostAppBundleID: bundleID
-                )
                 self.onTranscript?(final)
                 if self.state == .processing {
                     self.transition(to: .idle)

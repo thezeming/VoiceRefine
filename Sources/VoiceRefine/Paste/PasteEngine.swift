@@ -34,10 +34,9 @@ final class PasteEngine {
             Self.synthesizeBackspaces(count: n)
             // Brief gap so the target app finishes processing all the
             // delete events before ⌘V races in. Strong self capture is
-            // required — short-lived call sites (e.g. CorrectLast.save())
-            // construct a fresh PasteEngine and discard it immediately, so
-            // a `[weak self]` closure would fire with nil and the ⌘V would
-            // never land.
+            // required — short-lived call sites may construct a fresh
+            // PasteEngine and discard it immediately, so a `[weak self]`
+            // closure would fire with nil and the ⌘V would never land.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [self] in
                 pasteImpl(text)
             }

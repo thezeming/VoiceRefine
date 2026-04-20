@@ -104,7 +104,6 @@ Stage defaults: `WhisperKitProvider` (transcription) + `OllamaProvider` (refinem
 - **Whisper models**: `~/Library/Application Support/VoiceRefine/models/whisper/`.
 - **Apple Speech locale assets** (macOS 26+): OS-managed by `AssetInventory`, no per-app path. `SpeechTranscriber.installedLocales` reports what's present.
 - **Logs**: `~/Library/Logs/VoiceRefine/`.
-- **Audio scratch (Phase 2 only)**: `~/Library/Caches/VoiceRefine/last.wav`.
 
 ## Defaults worth remembering
 
