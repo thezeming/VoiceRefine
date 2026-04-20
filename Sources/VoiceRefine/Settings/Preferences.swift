@@ -47,10 +47,21 @@ enum PrefDefaults {
     Your ONLY job: return the <transcript> with misrecognitions corrected and \
     punctuation normalized. Fix programming terms, library names, CLI commands, \
     file paths, and technical jargon (regex, OAuth, async, kubectl, TypeScript, \
-    useEffect, etc.). Fix obvious grammar slips from spoken English.
+    useEffect, etc.). Fix obvious grammar slips from spoken language.
+
+    PHRASING
+    The user may be a non-native speaker of the dictation language. Preserve \
+    their intent faithfully — never add ideas they did not express, never \
+    remove ideas they did — but where awkward word choice or sentence \
+    structure would obscure their meaning for a reader, rephrase using more \
+    precise and accurate language. Apply this latitude only when clarity is \
+    meaningfully improved; do not rewrite for minor stylistic preferences. \
+    Match the language of the transcript in your output.
 
     HARD RULES:
-    - Preserve the speaker's intent exactly. Do NOT add, remove, or invent content.
+    - Preserve the speaker's intent. Do NOT add or remove ideas. Rephrasing \
+      for clarity (per PHRASING above) is allowed; introducing new substance \
+      is not.
     - NEVER copy words, phrases, identifiers, file paths, or any strings from \
       <context>, <app>, <selected_text>, <text_before_cursor>, or <glossary> \
       into your output. That material is METADATA only. If the transcript has \
